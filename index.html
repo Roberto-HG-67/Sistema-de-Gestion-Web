@@ -173,6 +173,26 @@
                 <div class="chart-actions-bar">
                     <button class="btn-descargar-data" onclick="descargarDataAnalisis()">📥 Descargar Data</button>
                 </div>
+                <div class="chart-controls-ventas">
+                    <div class="chart-controls-group">
+                        <span class="chart-controls-label">Mostrar:</span>
+                        <button id="btnToggleCantidad" class="chart-toggle-btn chart-btn-active" onclick="toggleBarraGrafico('cantidad')">
+                            🟣 Cantidad Vendida
+                        </button>
+                        <button id="btnToggleTotal" class="chart-toggle-btn chart-btn-active" onclick="toggleBarraGrafico('total')">
+                            🔵 Total Vendido ($)
+                        </button>
+                    </div>
+                    <div class="chart-controls-group">
+                        <span class="chart-controls-label">Ordenar:</span>
+                        <button id="btnSortCantidad" class="chart-sort-btn" onclick="ordenarGraficoVentas('cantidad')">
+                            📊 Ordenar por Cantidad ▼
+                        </button>
+                        <button id="btnSortTotal" class="chart-sort-btn" onclick="ordenarGraficoVentas('total')">
+                            💰 Ordenar por Total ($)
+                        </button>
+                    </div>
+                </div>
                 <canvas id="chartVentas"></canvas>
             </div>
         </div>
