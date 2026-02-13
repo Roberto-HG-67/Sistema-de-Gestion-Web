@@ -1,0 +1,30 @@
+# Archivos temporales de Excel
+~$*.xlsx
+~$*.xls
+*.tmp
+
+# Archivos del sistema
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+
+# Archivos de IDE
+.vscode/
+.idea/
+
+# Node modules (si llegas a usar npm)
+node_modules/
+
+# Archivos de backup
+*.bak
+*.backup
+
+# Scripts de seguridad (contienen contraseña - NO subir)
+Abrir_Proyecto.bat
+Cerrar_Proyecto.bat
+
+# Carpeta de backups locales
+_Backups/

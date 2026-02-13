@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ϟϟϟ</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Librería para leer archivos Excel -->
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <!-- Librería para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- Librería para enviar emails -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ϟϟϟ</h1>
+            <p>Sistema integrado de gestión de inventario y análisis</p>
+            <p class="credit">Creado por RAHG</p>
+        </header>
+
+        <!-- Navegación por pestañas -->
+        <div class="tabs">
+            <button class="tab-button active" onclick="cambiarVentana('sku')">SKU</button>
+            <button class="tab-button" onclick="cambiarVentana('proveedores')">Proveedores</button>
+            <button class="tab-button" onclick="cambiarVentana('stock-actual')">Stock Actual</button>
+            <button class="tab-button" onclick="cambiarVentana('consumo')">Consumo</button>
+            <button class="tab-button" onclick="cambiarVentana('analisis-ventas')">Análisis de Ventas</button>
+            <button class="tab-button" onclick="cambiarVentana('pronostico')">Pronóstico</button>
+            <button class="tab-button" onclick="cambiarVentana('compras')">Compras</button>
+            <button class="tab-button" onclick="cambiarVentana('control-entradas')">Control de Entradas</button>
+            <button class="tab-button" onclick="cambiarVentana('consolidado')">Consolidado</button>
+            <button class="tab-button" onclick="cambiarVentana('ingreso-productos')">Ingreso de Productos</button>
+            <button class="tab-button" onclick="cambiarVentana('historial-precios')">Historial de Precios</button>
+        </div>
+
+        <!-- Ventana SKU -->
+        <div id="sku" class="ventana active">
+            <h2>📦 SKU - Listado de Productos</h2>
+            <div id="loading-sku" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-sku" class="error" style="display: none;"></div>
+            <div id="tableContainer-sku" class="table-container"></div>
+        </div>
+
+        <!-- Ventana Proveedores -->
+        <div id="proveedores" class="ventana">
+            <h2>🏢 Proveedores</h2>
+            <div id="loading-proveedores" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-proveedores" class="error" style="display: none;"></div>
+            <div id="tableContainer-proveedores" class="table-container"></div>
+        </div>
+
+        <!-- Ventana Stock Actual -->
+        <div id="stock-actual" class="ventana">
+            <h2>📊 Stock Actual <span id="skuCountStockActual" class="sku-count" style="margin-left: 15px; display: none;"></span></h2>
+            <div id="loading-stock-actual" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-stock-actual" class="error" style="display: none;"></div>
+            <div id="tableContainer-stock-actual" class="table-container"></div>
+        </div>
+
+        <!-- Ventana Consolidado -->
+        <div id="consolidado" class="ventana">
+            <h2>📑 Consolidado - Unificar Archivos</h2>
+            <div class="file-upload-section">
+                <p>Selecciona 4 archivos Excel para consolidar:</p>
+                <input type="file" id="fileInputConsolidado" accept=".xlsx, .xls" multiple>
+                <button onclick="consolidarArchivos()">🔄 Consolidar y Crear BBDD</button>
+            </div>
+            <div id="loading-consolidado" class="loading" style="display: none;">⏳ Procesando archivos...</div>
+            <div id="error-consolidado" class="error" style="display: none;"></div>
+            <div id="info-consolidado" class="info" style="display: none;"></div>
+        </div>
+
+        <!-- Ventana Consumo -->
+        <div id="consumo" class="ventana">
+            <h2>📈 Consumo</h2>
+            <div class="filtros-consumo">
+                <label>
+                    Agrupación:
+                    <select id="filtroAgrupacion" onchange="actualizarConsumo()">
+                        <option value="anual">Anual</option>
+                        <option value="mensual">Mensual</option>
+                        <option value="semanal">Semanal</option>
+                    </select>
+                </label>
+                <label>
+                    Año:
+                    <select id="filtroAnio" onchange="actualizarConsumo()">
+                        <option value="2024">2024</option>
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                    </select>
+                </label>
+                <span id="skuCountConsumo" class="sku-count"></span>
+            </div>
+            <div class="filtros-tabla-consumo">
+                <label>
+                    Filtrar SKU:
+                    <input type="text" id="filtroSKUConsumo" placeholder="Buscar SKU..." oninput="filtrarTablaConsumo()">
+                </label>
+                <label>
+                    Filtrar Nombre:
+                    <input type="text" id="filtroNombreConsumo" placeholder="Buscar nombre..." oninput="filtrarTablaConsumo()">
+                </label>
+                <label>
+                    Ordenar por:
+                    <select id="ordenConsumoColumna" onchange="filtrarTablaConsumo()">
+                        <option value="original">Original</option>
+                        <option value="sku">SKU</option>
+                        <option value="nombre">Nombre</option>
+                    </select>
+                </label>
+                <label>
+                    <select id="ordenConsumoDir" onchange="filtrarTablaConsumo()">
+                        <option value="asc">A → Z</option>
+                        <option value="desc">Z → A</option>
+                    </select>
+                </label>
+            </div>
+            <div id="loading-consumo" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-consumo" class="error" style="display: none;"></div>
+            <div id="tableContainer-consumo" class="table-container"></div>
+            <div class="chart-container">
+                <div class="chart-options">
+                    <label class="chart-toggle"><input type="checkbox" id="toggleTendenciaConsumo" onchange="actualizarConsumo()"> Línea de tendencia</label>
+                    <label class="chart-toggle"><input type="checkbox" id="toggleRegresionConsumo" onchange="actualizarConsumo()"> Línea de regresión</label>
+                </div>
+                <canvas id="chartConsumo"></canvas>
+            </div>
+        </div>
+
+        <!-- Ventana Análisis de Ventas -->
+        <div id="analisis-ventas" class="ventana">
+            <h2>💰 Análisis de Ventas</h2>
+            <div class="filtros-ventas">
+                <label>
+                    Fecha Inicio:
+                    <input type="date" id="filtroFechaInicio" onchange="actualizarAnalisisVentas()">
+                </label>
+                <label>
+                    Fecha Fin:
+                    <input type="date" id="filtroFechaFin" onchange="actualizarAnalisisVentas()">
+                </label>
+                <label>
+                    Vendedor:
+                    <select id="filtroVendedor" onchange="actualizarAnalisisVentas()">
+                        <option value="">Todos</option>
+                    </select>
+                </label>
+                <span id="skuCountVentas" class="sku-count"></span>
+            </div>
+            <div id="loading-analisis-ventas" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-analisis-ventas" class="error" style="display: none;"></div>
+            <div id="tableContainer-analisis-ventas" class="table-container"></div>
+            <div class="chart-container chart-ventas-container">
+                <div class="chart-actions-bar">
+                    <button class="btn-descargar-data" onclick="descargarDataAnalisis()">📥 Descargar Data</button>
+                </div>
+                <canvas id="chartVentas"></canvas>
+            </div>
+        </div>
+
+        <!-- Ventana Pronóstico -->
+        <div id="pronostico" class="ventana">
+            <h2>🔮 Pronóstico</h2>
+            <div class="filtros-pronostico">
+                <label>
+                    Año:
+                    <select id="filtroAnioPronostico" onchange="actualizarPronostico()">
+                        <option value="2025" selected>2025</option>
+                        <option value="2026">2026</option>
+                    </select>
+                </label>
+                <span id="skuCountPronostico" class="sku-count"></span>
+            </div>
+            <div class="filtros-tabla-consumo">
+                <label>
+                    Filtrar SKU:
+                    <input type="text" id="filtroSKUPronostico" placeholder="Buscar SKU..." oninput="filtrarTablaPronostico()">
+                </label>
+                <label>
+                    Filtrar Producto:
+                    <input type="text" id="filtroProductoPronostico" placeholder="Buscar producto..." oninput="filtrarTablaPronostico()">
+                </label>
+            </div>
+            <div id="loading-pronostico" class="loading" style="display: none;">⏳ Calculando pronóstico...</div>
+            <div id="error-pronostico" class="error" style="display: none;"></div>
+            <h3 class="pronostico-seccion-titulo">&#128198; Semanal</h3>
+            <div id="tableContainer-pronostico-semanal" class="table-container"></div>
+            <h3 class="pronostico-seccion-titulo">📅 Mensual</h3>
+            <div id="tableContainer-pronostico-mensual" class="table-container"></div>
+        </div>
+
+        <!-- Ventana Compras -->
+        <div id="compras" class="ventana">
+            <h2>🛒 Compras</h2>
+            <div class="filtros-tabla-consumo">
+                <div class="filtro-grupo">
+                    <label for="filtroAnioCompras">Año:</label>
+                    <select id="filtroAnioCompras" onchange="actualizarCompras()">
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtroSemanaCompras">Semana:</label>
+                    <select id="filtroSemanaCompras" onchange="renderizarTablaCompras()">
+                    </select>
+                </div>
+            </div>
+            <div id="loading-compras" class="loading" style="display: none;">⏳ Cargando datos...</div>
+            <div id="error-compras" class="error" style="display: none;"></div>
+            <div id="info-semana-compras" class="info-semana" style="margin: 10px 0; font-weight: bold; color: #555;"></div>
+            <div id="tableContainer-compras" class="table-container"></div>
+            <div id="compras-descarga-wrapper"></div>
+        </div>
+
+        <!-- Ventana Control de Entradas -->
+        <div id="control-entradas" class="ventana">
+            <h2>📋 Control de Entradas</h2>
+            <div class="entradas-toolbar">
+                <div class="entradas-vista-toggle">
+                    <button class="btn-vista active" id="btnVistaSemanal" onclick="cambiarVistaEntradas('semanal')">📅 Semanal</button>
+                    <button class="btn-vista" id="btnVistaDiaria" onclick="cambiarVistaEntradas('diaria')">📆 Diaria</button>
+                </div>
+                <div class="entradas-nav">
+                    <button class="btn-nav" onclick="navegarEntradas(-1)">◀</button>
+                    <span id="entradas-periodo-label" class="entradas-periodo-label"></span>
+                    <button class="btn-nav" onclick="navegarEntradas(1)">▶</button>
+                    <button class="btn-nav-hoy" onclick="navegarEntradasHoy()">Hoy</button>
+                </div>
+                <button class="btn-agregar-entrada" onclick="abrirModalEntrada()">➕ Agendar Entrada</button>
+                <button class="btn-carga-masiva" onclick="abrirModalCargaMasiva()">📋 Carga Masiva</button>
+            </div>
+            <div id="entradas-resumen" class="entradas-resumen"></div>
+            <div id="entradas-contenido" class="entradas-contenido"></div>
+
+            <!-- Modal para agregar/editar entrada -->
+            <div id="modal-entrada" class="modal-overlay" style="display:none;">
+                <div class="modal-entrada-box">
+                    <h3 id="modal-entrada-titulo">Agendar Entrada</h3>
+                    <div class="modal-form">
+                        <div class="modal-form-row">
+                            <label>Fecha esperada:
+                                <input type="date" id="inputFechaEntrada">
+                            </label>
+                            <label>Proveedor:
+                                <select id="inputProveedorEntrada"><option value="">Seleccione...</option></select>
+                            </label>
+                        </div>
+                        <div class="modal-form-row">
+                            <label>SKU:
+                                <input type="text" id="inputSKUEntrada" placeholder="Código SKU" oninput="autocompletarSKUEntrada()">
+                            </label>
+                            <label>Producto:
+                                <input type="text" id="inputProductoEntrada" readonly>
+                            </label>
+                        </div>
+                        <div class="modal-form-row">
+                            <label>Cantidad esperada:
+                                <input type="number" id="inputCantidadEntrada" min="1" placeholder="0">
+                            </label>
+                            <label>Nota (opcional):
+                                <input type="text" id="inputNotaEntrada" placeholder="Observaciones...">
+                            </label>
+                        </div>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn-modal-guardar" onclick="guardarEntrada()">💾 Guardar</button>
+                        <button class="btn-modal-cancelar" onclick="cerrarModalEntrada()">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Modal para carga masiva -->
+            <div id="modal-carga-masiva" class="modal-overlay" style="display:none;">
+                <div class="modal-entrada-box modal-masiva-box">
+                    <h3>📋 Carga Masiva de Entradas</h3>
+                    <div class="modal-form">
+                        <div class="modal-form-row">
+                            <label>Fecha esperada:
+                                <input type="date" id="inputFechaMasiva">
+                            </label>
+                            <label>Proveedor:
+                                <select id="inputProveedorMasiva"><option value="">Seleccione...</option></select>
+                            </label>
+                        </div>
+                        <label class="masiva-textarea-label">Pegar lista de productos:
+                            <textarea id="inputTextoMasivo" rows="10" placeholder="Formato por línea:&#10;235008&#9;TABLA DE QUESO DEGUSTACION... - 3 CAJAS&#10;229001&#9;QUESO PROVOLETA... - 15 UNIDADES"></textarea>
+                        </label>
+                        <div id="masiva-preview" class="masiva-preview"></div>
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn-modal-preview" onclick="previsualizarCargaMasiva()">🔍 Previsualizar</button>
+                        <button class="btn-modal-guardar" onclick="guardarCargaMasiva()">💾 Agendar todos</button>
+                        <button class="btn-modal-cancelar" onclick="cerrarModalCargaMasiva()">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div id="ingreso-productos" class="ventana">
+            <h2>✍️ Ingreso de Productos</h2>
+            
+            <div class="form-ingreso">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputRut">RUT:</label>
+                        <input type="text" id="inputRut" oninput="formatearRUT(this)" maxlength="12" placeholder="12.345.678-9">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputComercializadora">COMERCIALIZADORA:</label>
+                        <input type="text" id="inputComercializadora" readonly>
+                    </div>
+                    <div class="form-group">
+                        <label for="inputFactura">FACTURA:</label>
+                        <input type="text" id="inputFactura">
+                    </div>
+                </div>
+
+                <div class="productos-table-container">
+                    <table id="tablaProductos" class="productos-table">
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Producto</th>
+                                <th>Cantidad</th>
+                                <th>Total Neto</th>
+                                <th>Costo Unitario Neto</th>
+                                <th>Acción</th>
+                            </tr>
+                        </thead>
+                        <tbody id="productosBody">
+                            <tr>
+                                <td><input type="text" class="input-sku" onblur="autocompletarProducto(this)"></td>
+                                <td><input type="text" class="input-producto" readonly></td>
+                                <td><input type="number" class="input-cantidad" oninput="calcularCostoUnitario(this)"></td>
+                                <td><input type="text" class="input-total-neto" oninput="formatearTotalNeto(this); calcularCostoUnitario(this)"></td>
+                                <td><input type="text" class="input-costo-unitario" readonly></td>
+                                <td><button class="btn-eliminar" onclick="eliminarFila(this)">🗑️</button></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="form-actions">
+                    <button class="btn-agregar-fila" onclick="agregarFilaProducto()">➕ Agregar fila</button>
+                    <button class="btn-enviar-correo" onclick="enviarCorreo()">📧 Enviar correo</button>
+                </div>
+            </div>
+
+            <div id="loading-ingreso" class="loading" style="display: none;">⏳ Enviando correo...</div>
+            <div id="error-ingreso" class="error" style="display: none;"></div>
+            <div id="success-ingreso" class="success" style="display: none;"></div>
+        </div>
+
+        <!-- Ventana Historial de Precios -->
+        <div id="historial-precios" class="ventana">
+            <h2>&#128181; Historial de Precios</h2>
+
+            <div class="form-historial">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputSKUHistorial">SKU:</label>
+                        <input type="text" id="inputSKUHistorial" placeholder="Ingrese SKU" oninput="autocompletarNombreHistorial()">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputNombreHistorial">Nombre:</label>
+                        <input type="text" id="inputNombreHistorial" readonly>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputRutHistorial">Rut Proveedor:</label>
+                        <input type="text" id="inputRutHistorial" oninput="formatearRUTHistorial(this)" maxlength="12" placeholder="12.345.678-9">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputNombreProvHistorial">Nombre Proveedor:</label>
+                        <input type="text" id="inputNombreProvHistorial" readonly>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="inputPrecioHistorial">Precio:</label>
+                        <input type="text" id="inputPrecioHistorial" placeholder="$0" oninput="formatearPrecioHistorial(this)">
+                    </div>
+                    <div class="form-group">
+                        <label for="inputFechaHistorial">Fecha:</label>
+                        <input type="date" id="inputFechaHistorial">
+                    </div>
+                </div>
+                <div class="form-actions-historial">
+                    <button class="btn-ingresar-registro" onclick="ingresarRegistroHistorial()" id="btnIngresarHistorial">&#128229; Ingresar registro</button>
+                    <span id="archivo-vinculado" class="archivo-vinculado"></span>
+                </div>
+            </div>
+
+            <div id="loading-historial" class="loading" style="display: none;">&#9203; Procesando...</div>
+            <div id="error-historial" class="error" style="display: none;"></div>
+            <div id="success-historial" class="success" style="display: none;"></div>
+
+            <h3 style="margin-top: 20px;">Registros actuales</h3>
+            <div id="tableContainer-historial" class="table-container"></div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>

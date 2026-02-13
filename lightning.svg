@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 350 1200" preserveAspectRatio="xMidYMid slice">
+  <defs>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="4" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+    <filter id="glow-wide">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+    <filter id="glow-med">
+      <feGaussianBlur stdDeviation="10"/>
+    </filter>
+    <radialGradient id="ambient" cx="50%" cy="50%" r="55%">
+      <stop offset="0%" stop-color="#0ea5e9" stop-opacity=".10"/>
+      <stop offset="60%" stop-color="#0369a1" stop-opacity=".04"/>
+      <stop offset="100%" stop-color="transparent"/>
+    </radialGradient>
+  </defs>
+  <!-- Ambient glow -->
+  <rect width="100%" height="100%" fill="url(#ambient)"/>
+  <!-- Ultra-wide glow layer -->
+  <path d="M175 40 L158 180 L195 170 L145 380 L190 365 L130 560 L205 510 L155 720 L185 695 L165 920 L175 1100"
+        stroke="#0369a1" stroke-width="14" fill="none" filter="url(#glow-wide)" opacity=".3"/>
+  <!-- Wide glow layer -->
+  <path d="M175 40 L158 180 L195 170 L145 380 L190 365 L130 560 L205 510 L155 720 L185 695 L165 920 L175 1100"
+        stroke="#0ea5e9" stroke-width="6" fill="none" filter="url(#glow-med)" opacity=".5"/>
+  <!-- Main bolt -->
+  <path d="M175 40 L158 180 L195 170 L145 380 L190 365 L130 560 L205 510 L155 720 L185 695 L165 920 L175 1100"
+        stroke="#38bdf8" stroke-width="2.5" fill="none" filter="url(#glow)" opacity=".9"/>
+  <!-- Core (white-blue) -->
+  <path d="M175 40 L158 180 L195 170 L145 380 L190 365 L130 560 L205 510 L155 720 L185 695 L165 920 L175 1100"
+        stroke="#e0f2fe" stroke-width=".8" fill="none" opacity=".65"/>
+  <!-- Branch right -->
+  <path d="M190 365 L245 470 L225 462 L260 570" stroke="#0ea5e9" stroke-width="5" fill="none" filter="url(#glow-wide)" opacity=".2"/>
+  <path d="M190 365 L245 470 L225 462 L260 570" stroke="#38bdf8" stroke-width="1.5" fill="none" filter="url(#glow)" opacity=".55"/>
+  <path d="M190 365 L245 470 L225 462 L260 570" stroke="#e0f2fe" stroke-width=".5" fill="none" opacity=".4"/>
+  <!-- Branch left -->
+  <path d="M145 380 L95 490 L118 480 L80 580" stroke="#0ea5e9" stroke-width="4" fill="none" filter="url(#glow-wide)" opacity=".18"/>
+  <path d="M145 380 L95 490 L118 480 L80 580" stroke="#7dd3fc" stroke-width="1.2" fill="none" filter="url(#glow)" opacity=".5"/>
+  <!-- Small branch from lower section -->
+  <path d="M205 510 L250 590 L235 585 L260 650" stroke="#0ea5e9" stroke-width="3" fill="none" filter="url(#glow-wide)" opacity=".15"/>
+  <path d="M205 510 L250 590 L235 585 L260 650" stroke="#38bdf8" stroke-width="1" fill="none" filter="url(#glow)" opacity=".45"/>
+  <!-- Tiny branch -->
+  <path d="M155 720 L120 790 L135 785 L110 850" stroke="#7dd3fc" stroke-width=".8" fill="none" filter="url(#glow)" opacity=".35"/>
+  <!-- Stars -->
+  <circle cx="45" cy="80" r="1.1" fill="#e0f2fe" opacity=".55"/>
+  <circle cx="310" cy="150" r="1.3" fill="#bae6fd" opacity=".45"/>
+  <circle cx="70" cy="270" r=".9" fill="#e0f2fe" opacity=".35"/>
+  <circle cx="290" cy="420" r="1.1" fill="#bae6fd" opacity=".50"/>
+  <circle cx="35" cy="550" r="1.2" fill="#e0f2fe" opacity=".40"/>
+  <circle cx="320" cy="680" r="1.0" fill="#7dd3fc" opacity=".35"/>
+  <circle cx="60" cy="820" r="1.1" fill="#bae6fd" opacity=".45"/>
+  <circle cx="280" cy="900" r=".8" fill="#e0f2fe" opacity=".50"/>
+  <circle cx="150" cy="100" r="1.4" fill="#bae6fd" opacity=".30"/>
+  <circle cx="220" cy="1050" r="1.0" fill="#e0f2fe" opacity=".35"/>
+  <circle cx="100" cy="450" r=".7" fill="#7dd3fc" opacity=".40"/>
+  <circle cx="250" cy="300" r="1.0" fill="#e0f2fe" opacity=".45"/>
+  <circle cx="30" cy="1000" r="1.2" fill="#bae6fd" opacity=".38"/>
+  <circle cx="330" cy="50" r=".9" fill="#e0f2fe" opacity=".42"/>
+</svg>
