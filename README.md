@@ -1,4 +1,4 @@
-# 📊 Sistema de Gestión Alimentika
+# 📊 Sistema de Gestión 
 
 Sistema web integrado para la gestión de inventario, análisis de ventas y control de productos. Desarrollado con JavaScript puro, HTML5 y CSS3.
 
