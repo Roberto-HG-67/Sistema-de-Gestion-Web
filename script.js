@@ -5,6 +5,7 @@ let datosStockActual = [];
 let datosBBDD = [];
 let chartConsumo = null;
 let chartVentas = null;
+let chartVentasTotal = null;
 
 // Función para cambiar entre ventanas
 function cambiarVentana(ventanaId) {
@@ -1020,137 +1021,41 @@ function descargarDataAnalisis() {
 }
 
 function crearGraficoVentas(datos) {
-    const ctx = document.getElementById('chartVentas');
+    if (chartVentas) chartVentas.destroy();
+    if (chartVentasTotal) chartVentasTotal.destroy();
     
-    if (chartVentas) {
-        chartVentas.destroy();
-    }
-    
-    // Guardar datos originales para reordenar
-    window._datosGraficoVentas = datos;
-    window._chartOrdenVentas = { campo: 'cantidad', asc: false };
-    window._chartMostrarCantidad = true;
-    window._chartMostrarTotal = true;
-    
-    actualizarGraficoVentas();
-}
-
-function actualizarGraficoVentas() {
-    const ctx = document.getElementById('chartVentas');
-    if (chartVentas) {
-        chartVentas.destroy();
-        chartVentas = null;
-    }
-    
-    const datos = window._datosGraficoVentas;
     if (!datos || datos.length === 0) return;
     
-    const config = window._chartOrdenVentas;
-    const mostrarCantidad = window._chartMostrarCantidad;
-    const mostrarTotal = window._chartMostrarTotal;
+    // Ordenar por cantidad y tomar top 20
+    const porCantidad = [...datos].sort((a, b) => b.cantidad - a.cantidad).slice(0, 20);
     
-    // Copiar y ordenar
-    const datosOrdenados = [...datos].sort((a, b) => {
-        const valA = a[config.campo] || 0;
-        const valB = b[config.campo] || 0;
-        return config.asc ? valA - valB : valB - valA;
-    });
-    
-    const top20 = datosOrdenados.slice(0, 20);
-    const labels = top20.map(d => d.nombre);
-    
-    const datasets = [];
-    const scales = {
-        x: {
-            ticks: {
-                autoSkip: false,
-                maxRotation: 60,
-                minRotation: 45,
-                font: { size: 9 }
-            }
-        }
-    };
-    
-    if (mostrarCantidad && mostrarTotal) {
-        // Ambas barras: eje izquierdo para cantidad, eje derecho para total
-        datasets.push({
-            label: 'Cantidad Vendida',
-            data: top20.map(d => d.cantidad),
-            backgroundColor: 'rgba(118, 75, 162, 0.7)',
-            borderColor: 'rgba(118, 75, 162, 1)',
-            borderWidth: 1,
-            yAxisID: 'y'
-        });
-        datasets.push({
-            label: 'Total Vendido ($)',
-            data: top20.map(d => d.total),
-            backgroundColor: 'rgba(14, 165, 233, 0.7)',
-            borderColor: 'rgba(14, 165, 233, 1)',
-            borderWidth: 1,
-            yAxisID: 'y1'
-        });
-        scales.y = {
-            type: 'linear',
-            position: 'left',
-            beginAtZero: true,
-            title: { display: true, text: 'Cantidad', color: 'rgba(118, 75, 162, 1)' },
-            ticks: { color: 'rgba(118, 75, 162, 1)' }
-        };
-        scales.y1 = {
-            type: 'linear',
-            position: 'right',
-            beginAtZero: true,
-            title: { display: true, text: 'Total ($)', color: 'rgba(14, 165, 233, 1)' },
-            ticks: { color: 'rgba(14, 165, 233, 1)' },
-            grid: { drawOnChartArea: false }
-        };
-    } else if (mostrarCantidad) {
-        datasets.push({
-            label: 'Cantidad Vendida',
-            data: top20.map(d => d.cantidad),
-            backgroundColor: 'rgba(118, 75, 162, 0.7)',
-            borderColor: 'rgba(118, 75, 162, 1)',
-            borderWidth: 1
-        });
-        scales.y = {
-            beginAtZero: true,
-            title: { display: true, text: 'Cantidad' }
-        };
-    } else if (mostrarTotal) {
-        datasets.push({
-            label: 'Total Vendido ($)',
-            data: top20.map(d => d.total),
-            backgroundColor: 'rgba(14, 165, 233, 0.7)',
-            borderColor: 'rgba(14, 165, 233, 1)',
-            borderWidth: 1
-        });
-        scales.y = {
-            beginAtZero: true,
-            title: { display: true, text: 'Total ($)' }
-        };
-    }
-    
-    const ordenLabel = config.campo === 'cantidad' ? 'Cantidad' : 'Total ($)';
-    const dirLabel = config.asc ? 'Menor a Mayor' : 'Mayor a Menor';
-    
-    chartVentas = new Chart(ctx, {
+    // Gráfico 1: Cantidad Vendida
+    chartVentas = new Chart(document.getElementById('chartVentas'), {
         type: 'bar',
-        data: { labels: labels, datasets: datasets },
+        data: {
+            labels: porCantidad.map(d => d.nombre),
+            datasets: [{
+                label: 'Cantidad Vendida',
+                data: porCantidad.map(d => d.cantidad),
+                backgroundColor: 'rgba(118, 75, 162, 0.7)',
+                borderColor: 'rgba(118, 75, 162, 1)',
+                borderWidth: 1
+            }]
+        },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales: scales,
+            scales: {
+                x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45, font: { size: 9 } } },
+                y: { beginAtZero: true, title: { display: true, text: 'Cantidad' } }
+            },
             plugins: {
-                title: {
-                    display: true,
-                    text: 'Top 20 - Ordenado por ' + ordenLabel + ' (' + dirLabel + ')'
-                },
+                title: { display: true, text: 'Top 20 - Cantidad Vendida' },
                 tooltip: {
                     callbacks: {
-                        label: function(context) {
-                            var value = context.parsed.y;
-                            if (value >= 1000) value = value.toLocaleString('es-CL');
-                            return context.dataset.label + ': ' + value;
+                        label: function(ctx) {
+                            var v = ctx.parsed.y;
+                            return ctx.dataset.label + ': ' + (v >= 1000 ? v.toLocaleString('es-CL') : v);
                         }
                     }
                 }
@@ -1158,52 +1063,42 @@ function actualizarGraficoVentas() {
         }
     });
     
-    actualizarBotonesGraficoVentas();
-}
-
-function toggleBarraGrafico(tipo) {
-    if (tipo === 'cantidad') {
-        window._chartMostrarCantidad = !window._chartMostrarCantidad;
-        // No permitir que ambas estén desactivadas
-        if (!window._chartMostrarCantidad && !window._chartMostrarTotal) window._chartMostrarTotal = true;
-    } else {
-        window._chartMostrarTotal = !window._chartMostrarTotal;
-        if (!window._chartMostrarCantidad && !window._chartMostrarTotal) window._chartMostrarCantidad = true;
-    }
-    actualizarGraficoVentas();
-}
-
-function ordenarGraficoVentas(campo) {
-    const config = window._chartOrdenVentas;
-    if (config.campo === campo) {
-        config.asc = !config.asc;
-    } else {
-        config.campo = campo;
-        config.asc = false;
-    }
-    actualizarGraficoVentas();
-}
-
-function actualizarBotonesGraficoVentas() {
-    const btnCant = document.getElementById('btnToggleCantidad');
-    const btnTotal = document.getElementById('btnToggleTotal');
-    const btnSortCant = document.getElementById('btnSortCantidad');
-    const btnSortTotal = document.getElementById('btnSortTotal');
+    // Ordenar por total vendido y tomar top 20
+    const porTotal = [...datos].sort((a, b) => b.total - a.total).slice(0, 20);
     
-    if (btnCant) {
-        btnCant.classList.toggle('chart-btn-active', window._chartMostrarCantidad);
-        btnCant.classList.toggle('chart-btn-inactive', !window._chartMostrarCantidad);
-    }
-    if (btnTotal) {
-        btnTotal.classList.toggle('chart-btn-active', window._chartMostrarTotal);
-        btnTotal.classList.toggle('chart-btn-inactive', !window._chartMostrarTotal);
-    }
-    
-    const config = window._chartOrdenVentas;
-    const iconCant = config.campo === 'cantidad' ? (config.asc ? ' ▲' : ' ▼') : '';
-    const iconTotal = config.campo === 'total' ? (config.asc ? ' ▲' : ' ▼') : '';
-    if (btnSortCant) btnSortCant.innerHTML = '📊 Ordenar por Cantidad' + iconCant;
-    if (btnSortTotal) btnSortTotal.innerHTML = '💰 Ordenar por Total ($)' + iconTotal;
+    // Gráfico 2: Total Vendido ($)
+    chartVentasTotal = new Chart(document.getElementById('chartVentasTotal'), {
+        type: 'bar',
+        data: {
+            labels: porTotal.map(d => d.nombre),
+            datasets: [{
+                label: 'Total Vendido ($)',
+                data: porTotal.map(d => d.total),
+                backgroundColor: 'rgba(14, 165, 233, 0.7)',
+                borderColor: 'rgba(14, 165, 233, 1)',
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                x: { ticks: { autoSkip: false, maxRotation: 60, minRotation: 45, font: { size: 9 } } },
+                y: { beginAtZero: true, title: { display: true, text: 'Total ($)' } }
+            },
+            plugins: {
+                title: { display: true, text: 'Top 20 - Total Vendido ($)' },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            var v = ctx.parsed.y;
+                            return ctx.dataset.label + ': ' + (v >= 1000 ? v.toLocaleString('es-CL') : v);
+                        }
+                    }
+                }
+            }
+        }
+    });
 }
 
 // ===== VENTANA INGRESO DE PRODUCTOS =====
