@@ -962,25 +962,25 @@ function mostrarTablaVentasSinFiltrosNumericos(datos, containerId) {
         let sortIcon = '';
         if (esOrdenable) {
             if (estado.col === index) {
-                sortIcon = estado.asc ? ' ▲' : ' ▼';
+                sortIcon = estado.asc ? '&#9650;' : '&#9660;';
             } else {
-                sortIcon = ' ⇅';
+                sortIcon = '&#8693;';
             }
         }
         
         // Solo mostrar filtro en las primeras 2 columnas (SKU, Nombre)
         if (index < 2) {
-            const sortBtn = esOrdenable ? `<span class="sort-btn" onclick="ordenarTablaVentas(${index})">${sortIcon}</span>` : '';
+            const sortBtn = esOrdenable ? ` <span class="sort-btn" onclick="ordenarTablaVentas(${index})" title="Ordenar">${sortIcon}</span>` : '';
             html += `<th${clsAttr}>
                 <div class="header-cell">
-                    <span class="header-text">${header || 'Col ' + (index + 1)}${sortBtn}</span>
+                    <span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}
                     <input type="text" class="column-filter" placeholder="Filtrar..." 
                            onkeyup="filtrarTabla('${containerId}', ${index}, this.value)">
                 </div>
             </th>`;
         } else {
-            const sortBtn = esOrdenable ? `<span class="sort-btn" onclick="ordenarTablaVentas(${index})">${sortIcon}</span>` : '';
-            html += `<th${clsAttr}><span class="header-text">${header || 'Col ' + (index + 1)}${sortBtn}</span></th>`;
+            const sortBtn = esOrdenable ? ` <span class="sort-btn" onclick="ordenarTablaVentas(${index})" title="Ordenar">${sortIcon}</span>` : '';
+            html += `<th${clsAttr}><span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}</th>`;
         }
     });
     html += '</tr></thead><tbody>';

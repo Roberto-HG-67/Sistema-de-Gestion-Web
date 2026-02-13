@@ -1911,13 +1911,18 @@ button:active {
 .sort-btn {
     cursor: pointer;
     user-select: none;
-    font-size: 0.85em;
+    font-size: 0.9em;
     color: #0ea5e9;
-    margin-left: 4px;
-    transition: color 0.2s ease;
+    margin-left: 5px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
     display: inline-block;
+    vertical-align: middle;
+    background: rgba(14, 165, 233, 0.1);
 }
 
 .sort-btn:hover {
-    color: #0369a1;
+    color: #fff;
+    background: #0ea5e9;
 }
