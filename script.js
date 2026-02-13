@@ -817,6 +817,7 @@ function actualizarAnalisisVentas() {
         indexFechaEntero_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
     }
     const indexVendedor_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('vendedor'));
+    const indexPrecio_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'precio');
     
     const EXCEL_EPOCH = new Date('1899-12-30').getTime();
     function excelSerialToDate(serial) {
@@ -827,7 +828,7 @@ function actualizarAnalisisVentas() {
     
     const filasSKU = datosSKU.slice(1);
     
-    const datosAnalisis = [['SKU', 'Nombre', 'Número de ventas', 'Cantidad Vendida']];
+    const datosAnalisis = [['SKU', 'Nombre', 'Número de ventas', 'Cantidad Vendida', 'Total Vendido ($)']];
     const datosGrafico = [];
     let skuCount = 0;
     
@@ -843,6 +844,7 @@ function actualizarAnalisisVentas() {
         
         let numeroVentas = 0;
         let cantidadVendida = 0;
+        let totalVendido = 0;
         
         for (let i = 1; i < datosBBDD.length; i++) {
             const filaBBDD = datosBBDD[i];
@@ -851,6 +853,7 @@ function actualizarAnalisisVentas() {
             if (idProdBBDD !== skuStr && idProdBBDD !== skuInt) continue;
             
             const cantidad = Number(filaBBDD[indexCantidad_BBDD]) || 0;
+            const precio = indexPrecio_BBDD >= 0 ? (Number(filaBBDD[indexPrecio_BBDD]) || 0) : 0;
             const fechaEnteroVal = filaBBDD[indexFechaEntero_BBDD];
             const vendedor = filaBBDD[indexVendedor_BBDD];
             
@@ -868,11 +871,12 @@ function actualizarAnalisisVentas() {
             if (incluir) {
                 numeroVentas++;
                 cantidadVendida += cantidad;
+                totalVendido += precio * cantidad;
             }
         }
         
-        datosAnalisis.push([skuOrig, nombre, numeroVentas, cantidadVendida]);
-        window._datosAnalisisVentas.push([skuOrig, nombre, numeroVentas, cantidadVendida]);
+        datosAnalisis.push([skuOrig, nombre, numeroVentas, cantidadVendida, Math.round(totalVendido)]);
+        window._datosAnalisisVentas.push([skuOrig, nombre, numeroVentas, cantidadVendida, Math.round(totalVendido)]);
         if (cantidadVendida > 0) {
             datosGrafico.push({ nombre: nombre || String(skuOrig), cantidad: cantidadVendida });
         }
@@ -899,7 +903,7 @@ function mostrarTablaVentasSinFiltrosNumericos(datos, containerId) {
     const filas = datos.slice(1);
     
     // Columnas a centrar
-    const colsCentrar = ['número de ventas', 'cantidad vendida'];
+    const colsCentrar = ['número de ventas', 'cantidad vendida', 'total vendido'];
     
     let html = '<table class="excel-table"><thead><tr>';
     headers.forEach((header, index) => {
@@ -947,7 +951,7 @@ function descargarDataAnalisis() {
         alert('No hay datos para descargar');
         return;
     }
-    const headers = ['SKU', 'Nombre', 'Número de ventas', 'Cantidad Vendida'];
+    const headers = ['SKU', 'Nombre', 'Número de ventas', 'Cantidad Vendida', 'Total Vendido ($)'];
     const datosExport = [headers, ...window._datosAnalisisVentas];
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(datosExport);
