@@ -428,6 +428,13 @@
         <div id="analisis-inventario" class="ventana">
             <h2>&#128230; Análisis de Inventario</h2>
 
+            <!-- Filtro de fechas -->
+            <div class="inv-date-filter">
+                <label>Desde: <input type="date" id="invFechaInicio" value="2025-01-01"></label>
+                <label>Hasta: <input type="date" id="invFechaFin"></label>
+                <button onclick="aplicarFiltroFechaInventario()">&#128269; Aplicar filtro</button>
+            </div>
+
             <!-- KPI Cards -->
             <div class="inv-kpi-container" id="inv-kpi-container" style="display:none;">
                 <div class="inv-kpi-card">
@@ -503,6 +510,18 @@
                     <button class="btn-exportar-inv" onclick="exportarRotacion()">&#128229; Exportar Rotación a Excel</button>
                 </div>
                 <div id="tableContainer-rotacion" class="table-container"></div>
+            </div>
+
+            <!-- Conclusiones -->
+            <div class="inv-insight-box conclusiones" id="inv-conclusiones" style="display:none;">
+                <h3>&#128161; Conclusiones Importantes</h3>
+                <ul id="inv-conclusiones-lista"></ul>
+            </div>
+
+            <!-- Mejoras -->
+            <div class="inv-insight-box mejoras" id="inv-mejoras" style="display:none;">
+                <h3>&#128640; Mejoras Propuestas</h3>
+                <ul id="inv-mejoras-lista"></ul>
             </div>
 
             <div id="loading-inventario" class="loading" style="display: none;">&#9203; Cargando análisis de inventario...</div>

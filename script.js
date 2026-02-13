@@ -3102,6 +3102,7 @@ let chartABC_pareto = null;
 let chartRotacion = null;
 window._datosABC = [];
 window._datosRotacion = [];
+window._invDatosBase = null; // datos crudos para re-filtrar por fecha
 
 async function cargarAnalisisInventario() {
     const loading = document.getElementById('loading-inventario');
@@ -3133,158 +3134,33 @@ async function cargarAnalisisInventario() {
             datosStockActual = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
         }
 
-        // Índices SKU
-        const headersSKU = datosSKU[0];
-        const iSKU = headersSKU.findIndex(h => h && h.toLowerCase() === 'sku');
-        const iNombre = headersSKU.findIndex(h => h && h.toLowerCase().includes('nombre'));
+        // Guardar índices base una sola vez
+        if (!window._invDatosBase) {
+            const headersSKU = datosSKU[0];
+            const iSKU = headersSKU.findIndex(h => h && h.toLowerCase() === 'sku');
+            const iNombre = headersSKU.findIndex(h => h && h.toLowerCase().includes('nombre'));
+            const headersBBDD = datosBBDD[0];
+            let iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'idproducto');
+            if (iIDProd < 0) iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'id entero');
+            const iCantBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('cantidad'));
+            const iPrecioBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'precio');
+            let iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'fecha entero');
+            if (iFechaBBDD < 0) iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
+            const headersStock = datosStockActual[0];
+            const iCodigoStock = headersStock.findIndex(h => h && (h.toLowerCase().includes('código') || h.toLowerCase().includes('codigo')));
+            const iStockNunoa = headersStock.findIndex(h => h && h.toLowerCase().includes('ñuñoa'));
 
-        // Índices BBDD
-        const headersBBDD = datosBBDD[0];
-        let iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'idproducto');
-        if (iIDProd < 0) iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'id entero');
-        const iCantBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('cantidad'));
-        const iPrecioBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'precio');
-        let iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'fecha entero');
-        if (iFechaBBDD < 0) iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
-
-        // Índices Stock Actual
-        const headersStock = datosStockActual[0];
-        const iCodigoStock = headersStock.findIndex(h => h && (h.toLowerCase().includes('código') || h.toLowerCase().includes('codigo')));
-        const iStockNunoa = headersStock.findIndex(h => h && h.toLowerCase().includes('ñuñoa'));
-
-        const EXCEL_EPOCH = new Date('1899-12-30').getTime();
-        function excelSerialToDate(serial) {
-            const num = Number(serial);
-            if (isNaN(num) || num <= 0) return null;
-            return new Date(EXCEL_EPOCH + num * 86400000);
+            window._invDatosBase = { iSKU, iNombre, iIDProd, iCantBBDD, iPrecioBBDD, iFechaBBDD, iCodigoStock, iStockNunoa };
         }
 
-        // Calcular ventas por producto
-        const ventasPorSKU = {}; // sku -> { cantidadTotal, valorTotal, ventasCount, fechaMin, fechaMax }
-        for (let i = 1; i < datosBBDD.length; i++) {
-            const fila = datosBBDD[i];
-            const idProd = String(fila[iIDProd] || '').trim();
-            if (!idProd) continue;
-            const cantidad = Number(fila[iCantBBDD]) || 0;
-            const precio = iPrecioBBDD >= 0 ? (Number(fila[iPrecioBBDD]) || 0) : 0;
-            const valor = cantidad * precio;
-            const fechaVal = fila[iFechaBBDD];
-            let fecha = null;
-            if (typeof fechaVal === 'number') fecha = excelSerialToDate(fechaVal);
-            else if (fechaVal instanceof Date) fecha = fechaVal;
-            else if (typeof fechaVal === 'string') fecha = new Date(fechaVal);
-
-            if (!ventasPorSKU[idProd]) {
-                ventasPorSKU[idProd] = { cantidadTotal: 0, valorTotal: 0, ventasCount: 0, fechaMin: null, fechaMax: null };
-            }
-            const v = ventasPorSKU[idProd];
-            v.cantidadTotal += cantidad;
-            v.valorTotal += valor;
-            v.ventasCount++;
-            if (fecha && !isNaN(fecha.getTime())) {
-                if (!v.fechaMin || fecha < v.fechaMin) v.fechaMin = fecha;
-                if (!v.fechaMax || fecha > v.fechaMax) v.fechaMax = fecha;
-            }
+        // Setear fecha fin a hoy si está vacía
+        const inputFechaFin = document.getElementById('invFechaFin');
+        if (!inputFechaFin.value) {
+            const hoy = new Date();
+            inputFechaFin.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
         }
 
-        // Stock actual por código
-        const stockPorCodigo = {};
-        for (let i = 1; i < datosStockActual.length; i++) {
-            const fila = datosStockActual[i];
-            const codigo = String(fila[iCodigoStock] || '').trim();
-            if (codigo) stockPorCodigo[codigo] = Number(fila[iStockNunoa]) || 0;
-        }
-
-        // Determinar rango de fechas global para cálculos de rotación
-        let fechaGlobalMin = null, fechaGlobalMax = null;
-        Object.values(ventasPorSKU).forEach(v => {
-            if (v.fechaMin && (!fechaGlobalMin || v.fechaMin < fechaGlobalMin)) fechaGlobalMin = v.fechaMin;
-            if (v.fechaMax && (!fechaGlobalMax || v.fechaMax > fechaGlobalMax)) fechaGlobalMax = v.fechaMax;
-        });
-        const diasPeriodo = (fechaGlobalMin && fechaGlobalMax)
-            ? Math.max(1, Math.round((fechaGlobalMax - fechaGlobalMin) / 86400000))
-            : 365;
-
-        // Construir datos por producto
-        const productos = [];
-        for (let i = 1; i < datosSKU.length; i++) {
-            const fila = datosSKU[i];
-            const sku = fila[iSKU];
-            if (sku === undefined || sku === null) continue;
-            const skuStr = String(sku).trim();
-            const skuInt = String(Math.floor(Number(sku)));
-            const nombre = fila[iNombre] || '';
-            const venta = ventasPorSKU[skuStr] || ventasPorSKU[skuInt] || { cantidadTotal: 0, valorTotal: 0, ventasCount: 0 };
-            const stockActual = stockPorCodigo[skuStr] !== undefined ? stockPorCodigo[skuStr] : (stockPorCodigo[skuInt] !== undefined ? stockPorCodigo[skuInt] : 0);
-            productos.push({
-                sku: skuStr,
-                nombre,
-                cantidadVendida: venta.cantidadTotal,
-                valorVentas: venta.valorTotal,
-                ventasCount: venta.ventasCount,
-                stockActual
-            });
-        }
-
-        // ===== CLASIFICACIÓN ABC =====
-        const valorTotal = productos.reduce((s, p) => s + p.valorVentas, 0);
-        // Ordenar por valor descendente
-        productos.sort((a, b) => b.valorVentas - a.valorVentas);
-        let acumulado = 0;
-        productos.forEach(p => {
-            acumulado += p.valorVentas;
-            const pctAcum = valorTotal > 0 ? (acumulado / valorTotal) * 100 : 0;
-            p.pctValor = valorTotal > 0 ? (p.valorVentas / valorTotal) * 100 : 0;
-            p.pctAcumulado = pctAcum;
-            if (pctAcum <= 80) p.claseABC = 'A';
-            else if (pctAcum <= 95) p.claseABC = 'B';
-            else p.claseABC = 'C';
-        });
-
-        // ===== ROTACIÓN =====
-        productos.forEach(p => {
-            const consumoDiario = diasPeriodo > 0 ? p.cantidadVendida / diasPeriodo : 0;
-            const consumoSemanal = consumoDiario * 7;
-            p.indiceRotacion = p.stockActual > 0 ? p.cantidadVendida / p.stockActual : (p.cantidadVendida > 0 ? 999 : 0);
-            p.diasInventario = consumoDiario > 0 ? Math.round(p.stockActual / consumoDiario) : (p.stockActual > 0 ? 9999 : 0);
-            p.coberturaSemanas = consumoSemanal > 0 ? parseFloat((p.stockActual / consumoSemanal).toFixed(1)) : (p.stockActual > 0 ? 999 : 0);
-            // Categoría de rotación
-            if (p.indiceRotacion >= 12) p.categoriaRotacion = 'Alta';
-            else if (p.indiceRotacion >= 4) p.categoriaRotacion = 'Media';
-            else if (p.indiceRotacion >= 1) p.categoriaRotacion = 'Baja';
-            else p.categoriaRotacion = 'Muy Baja';
-        });
-
-        window._datosABC = productos;
-        window._datosRotacion = productos;
-
-        // Render KPIs
-        const countA = productos.filter(p => p.claseABC === 'A').length;
-        const countB = productos.filter(p => p.claseABC === 'B').length;
-        const countC = productos.filter(p => p.claseABC === 'C').length;
-        const valorA = productos.filter(p => p.claseABC === 'A').reduce((s, p) => s + p.valorVentas, 0);
-        const valorB = productos.filter(p => p.claseABC === 'B').reduce((s, p) => s + p.valorVentas, 0);
-        const valorC = productos.filter(p => p.claseABC === 'C').reduce((s, p) => s + p.valorVentas, 0);
-
-        document.getElementById('kpi-total-skus').textContent = productos.length;
-        document.getElementById('kpi-clase-a').textContent = countA;
-        document.getElementById('kpi-clase-a-pct').textContent = valorTotal > 0 ? ((valorA / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
-        document.getElementById('kpi-clase-b').textContent = countB;
-        document.getElementById('kpi-clase-b-pct').textContent = valorTotal > 0 ? ((valorB / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
-        document.getElementById('kpi-clase-c').textContent = countC;
-        document.getElementById('kpi-clase-c-pct').textContent = valorTotal > 0 ? ((valorC / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
-        document.getElementById('kpi-valor-total').textContent = '$' + Math.round(valorTotal).toLocaleString('es-CL');
-        document.getElementById('inv-kpi-container').style.display = 'flex';
-
-        // Render gráficos ABC
-        renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC);
-        renderChartABC_pareto(productos);
-        renderChartRotacion(productos);
-
-        // Render tablas
-        renderTablaABC(productos);
-        renderTablaRotacion(productos);
-
+        procesarAnalisisInventario();
         loading.style.display = 'none';
     } catch (err) {
         loading.style.display = 'none';
@@ -3292,6 +3168,158 @@ async function cargarAnalisisInventario() {
         errorEl.textContent = '❌ Error: ' + err.message;
         console.error('Error en análisis de inventario:', err);
     }
+}
+
+function aplicarFiltroFechaInventario() {
+    procesarAnalisisInventario();
+}
+
+function procesarAnalisisInventario() {
+    const idx = window._invDatosBase;
+    if (!idx) return;
+
+    const EXCEL_EPOCH = new Date('1899-12-30').getTime();
+    function excelSerialToDate(serial) {
+        const num = Number(serial);
+        if (isNaN(num) || num <= 0) return null;
+        return new Date(EXCEL_EPOCH + num * 86400000);
+    }
+
+    // Leer filtro de fechas
+    const fechaInicioStr = document.getElementById('invFechaInicio').value;
+    const fechaFinStr = document.getElementById('invFechaFin').value;
+    let fechaInicio = fechaInicioStr ? new Date(fechaInicioStr + 'T00:00:00') : null;
+    let fechaFin = fechaFinStr ? new Date(fechaFinStr + 'T23:59:59') : null;
+
+    // Calcular ventas por producto con filtro de fecha
+    const ventasPorSKU = {};
+    for (let i = 1; i < datosBBDD.length; i++) {
+        const fila = datosBBDD[i];
+        const idProd = String(fila[idx.iIDProd] || '').trim();
+        if (!idProd) continue;
+        const cantidad = Number(fila[idx.iCantBBDD]) || 0;
+        const precio = idx.iPrecioBBDD >= 0 ? (Number(fila[idx.iPrecioBBDD]) || 0) : 0;
+        const valor = cantidad * precio;
+        const fechaVal = fila[idx.iFechaBBDD];
+        let fecha = null;
+        if (typeof fechaVal === 'number') fecha = excelSerialToDate(fechaVal);
+        else if (fechaVal instanceof Date) fecha = fechaVal;
+        else if (typeof fechaVal === 'string') fecha = new Date(fechaVal);
+
+        // Aplicar filtro de fecha
+        if (fecha && !isNaN(fecha.getTime())) {
+            if (fechaInicio && fecha < fechaInicio) continue;
+            if (fechaFin && fecha > fechaFin) continue;
+        }
+
+        if (!ventasPorSKU[idProd]) {
+            ventasPorSKU[idProd] = { cantidadTotal: 0, valorTotal: 0, ventasCount: 0, fechaMin: null, fechaMax: null };
+        }
+        const v = ventasPorSKU[idProd];
+        v.cantidadTotal += cantidad;
+        v.valorTotal += valor;
+        v.ventasCount++;
+        if (fecha && !isNaN(fecha.getTime())) {
+            if (!v.fechaMin || fecha < v.fechaMin) v.fechaMin = fecha;
+            if (!v.fechaMax || fecha > v.fechaMax) v.fechaMax = fecha;
+        }
+    }
+
+    // Stock actual
+    const stockPorCodigo = {};
+    for (let i = 1; i < datosStockActual.length; i++) {
+        const fila = datosStockActual[i];
+        const codigo = String(fila[idx.iCodigoStock] || '').trim();
+        if (codigo) stockPorCodigo[codigo] = Number(fila[idx.iStockNunoa]) || 0;
+    }
+
+    // Rango de fechas para rotación
+    let fechaGlobalMin = null, fechaGlobalMax = null;
+    Object.values(ventasPorSKU).forEach(v => {
+        if (v.fechaMin && (!fechaGlobalMin || v.fechaMin < fechaGlobalMin)) fechaGlobalMin = v.fechaMin;
+        if (v.fechaMax && (!fechaGlobalMax || v.fechaMax > fechaGlobalMax)) fechaGlobalMax = v.fechaMax;
+    });
+    const diasPeriodo = (fechaGlobalMin && fechaGlobalMax)
+        ? Math.max(1, Math.round((fechaGlobalMax - fechaGlobalMin) / 86400000))
+        : 365;
+
+    // Construir datos por producto
+    const productos = [];
+    for (let i = 1; i < datosSKU.length; i++) {
+        const fila = datosSKU[i];
+        const sku = fila[idx.iSKU];
+        if (sku === undefined || sku === null) continue;
+        const skuStr = String(sku).trim();
+        const skuInt = String(Math.floor(Number(sku)));
+        const nombre = fila[idx.iNombre] || '';
+        const venta = ventasPorSKU[skuStr] || ventasPorSKU[skuInt] || { cantidadTotal: 0, valorTotal: 0, ventasCount: 0 };
+        const stockActual = stockPorCodigo[skuStr] !== undefined ? stockPorCodigo[skuStr] : (stockPorCodigo[skuInt] !== undefined ? stockPorCodigo[skuInt] : 0);
+        productos.push({ sku: skuStr, nombre, cantidadVendida: venta.cantidadTotal, valorVentas: venta.valorTotal, ventasCount: venta.ventasCount, stockActual });
+    }
+
+    // Clasificación ABC
+    const valorTotal = productos.reduce((s, p) => s + p.valorVentas, 0);
+    productos.sort((a, b) => b.valorVentas - a.valorVentas);
+    let acumulado = 0;
+    productos.forEach(p => {
+        acumulado += p.valorVentas;
+        const pctAcum = valorTotal > 0 ? (acumulado / valorTotal) * 100 : 0;
+        p.pctValor = valorTotal > 0 ? (p.valorVentas / valorTotal) * 100 : 0;
+        p.pctAcumulado = pctAcum;
+        if (pctAcum <= 80) p.claseABC = 'A';
+        else if (pctAcum <= 95) p.claseABC = 'B';
+        else p.claseABC = 'C';
+    });
+
+    // Rotación
+    productos.forEach(p => {
+        const consumoDiario = diasPeriodo > 0 ? p.cantidadVendida / diasPeriodo : 0;
+        const consumoSemanal = consumoDiario * 7;
+        p.indiceRotacion = p.stockActual > 0 ? p.cantidadVendida / p.stockActual : (p.cantidadVendida > 0 ? 999 : 0);
+        p.diasInventario = consumoDiario > 0 ? Math.round(p.stockActual / consumoDiario) : (p.stockActual > 0 ? 9999 : 0);
+        p.coberturaSemanas = consumoSemanal > 0 ? parseFloat((p.stockActual / consumoSemanal).toFixed(1)) : (p.stockActual > 0 ? 999 : 0);
+        if (p.indiceRotacion >= 12) p.categoriaRotacion = 'Alta';
+        else if (p.indiceRotacion >= 4) p.categoriaRotacion = 'Media';
+        else if (p.indiceRotacion >= 1) p.categoriaRotacion = 'Baja';
+        else p.categoriaRotacion = 'Muy Baja';
+    });
+
+    window._datosABC = productos;
+    window._datosRotacion = productos;
+
+    // KPIs
+    const countA = productos.filter(p => p.claseABC === 'A').length;
+    const countB = productos.filter(p => p.claseABC === 'B').length;
+    const countC = productos.filter(p => p.claseABC === 'C').length;
+    const valorA = productos.filter(p => p.claseABC === 'A').reduce((s, p) => s + p.valorVentas, 0);
+    const valorB = productos.filter(p => p.claseABC === 'B').reduce((s, p) => s + p.valorVentas, 0);
+    const valorC = productos.filter(p => p.claseABC === 'C').reduce((s, p) => s + p.valorVentas, 0);
+
+    document.getElementById('kpi-total-skus').textContent = productos.length;
+    document.getElementById('kpi-clase-a').textContent = countA;
+    document.getElementById('kpi-clase-a-pct').textContent = valorTotal > 0 ? ((valorA / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+    document.getElementById('kpi-clase-b').textContent = countB;
+    document.getElementById('kpi-clase-b-pct').textContent = valorTotal > 0 ? ((valorB / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+    document.getElementById('kpi-clase-c').textContent = countC;
+    document.getElementById('kpi-clase-c-pct').textContent = valorTotal > 0 ? ((valorC / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+    document.getElementById('kpi-valor-total').textContent = '$' + Math.round(valorTotal).toLocaleString('es-CL');
+    document.getElementById('inv-kpi-container').style.display = 'flex';
+
+    // Reset filtros
+    document.getElementById('filtroClaseABC').value = 'todas';
+    document.getElementById('filtroRotacion').value = 'todas';
+
+    // Gráficos
+    renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC);
+    renderChartABC_pareto(productos);
+    renderChartRotacion(productos);
+
+    // Tablas
+    renderTablaABC(productos);
+    renderTablaRotacion(productos);
+
+    // Conclusiones y Mejoras
+    generarConclusionesYMejoras(productos, valorTotal, countA, countB, countC, diasPeriodo);
 }
 
 // ---- Gráficos ABC ----
@@ -3331,39 +3359,20 @@ function renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC) {
 function renderChartABC_pareto(productos) {
     const ctx = document.getElementById('chartABC_pareto');
     if (chartABC_pareto) { chartABC_pareto.destroy(); chartABC_pareto = null; }
-
-    // Tomar los primeros 30 productos para el pareto (por valor)
     const top = productos.slice(0, Math.min(30, productos.length));
     const labels = top.map(p => p.sku);
     const valores = top.map(p => p.valorVentas);
     const acumulados = top.map(p => p.pctAcumulado);
     const colores = top.map(p => p.claseABC === 'A' ? '#2ecc71' : p.claseABC === 'B' ? '#f1c40f' : '#e74c3c');
+    const nombres = top.map(p => p.nombre);
 
     chartABC_pareto = new Chart(ctx, {
         type: 'bar',
         data: {
             labels,
             datasets: [
-                {
-                    label: 'Valor Ventas ($)',
-                    data: valores,
-                    backgroundColor: colores,
-                    borderColor: colores,
-                    borderWidth: 1,
-                    yAxisID: 'y',
-                    order: 2
-                },
-                {
-                    label: '% Acumulado',
-                    data: acumulados,
-                    type: 'line',
-                    borderColor: '#00bcd4',
-                    backgroundColor: 'rgba(0,188,212,0.1)',
-                    pointRadius: 2,
-                    borderWidth: 2,
-                    yAxisID: 'y1',
-                    order: 1
-                }
+                { label: 'Valor Ventas ($)', data: valores, backgroundColor: colores, borderColor: colores, borderWidth: 1, yAxisID: 'y', order: 2 },
+                { label: '% Acumulado', data: acumulados, type: 'line', borderColor: '#00bcd4', backgroundColor: 'rgba(0,188,212,0.1)', pointRadius: 2, borderWidth: 2, yAxisID: 'y1', order: 1 }
             ]
         },
         options: {
@@ -3374,6 +3383,10 @@ function renderChartABC_pareto(productos) {
                 legend: { labels: { color: '#ccc', font: { size: 11 } } },
                 tooltip: {
                     callbacks: {
+                        title: function(items) {
+                            const i = items[0].dataIndex;
+                            return nombres[i] + ' (SKU: ' + labels[i] + ')';
+                        },
                         label: function(ctx) {
                             if (ctx.dataset.yAxisID === 'y1') return ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '%';
                             return ctx.dataset.label + ': $' + Math.round(ctx.raw).toLocaleString('es-CL');
@@ -3391,16 +3404,20 @@ function renderChartABC_pareto(productos) {
 }
 
 // ---- Gráfico Rotación ----
-function renderChartRotacion(productos) {
+function renderChartRotacion(productos, filtroRot) {
     const ctx = document.getElementById('chartRotacion');
     if (chartRotacion) { chartRotacion.destroy(); chartRotacion = null; }
 
-    // Ordenar por índice de rotación desc (excluir 999 "sin stock")
-    const filtrados = productos.filter(p => p.indiceRotacion > 0 && p.indiceRotacion < 999);
+    let filtrados = productos.filter(p => p.indiceRotacion > 0 && p.indiceRotacion < 999);
+    if (filtroRot === 'alta') filtrados = filtrados.filter(p => p.indiceRotacion >= 12);
+    else if (filtroRot === 'media') filtrados = filtrados.filter(p => p.indiceRotacion >= 4 && p.indiceRotacion < 12);
+    else if (filtroRot === 'baja') filtrados = filtrados.filter(p => p.indiceRotacion >= 1 && p.indiceRotacion < 4);
+    else if (filtroRot === 'muybaja') filtrados = productos.filter(p => p.indiceRotacion < 1);
+
     filtrados.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
     const top = filtrados.slice(0, Math.min(30, filtrados.length));
-
-    const labels = top.map(p => p.sku);
+    const labels = top.map(p => p.nombre || p.sku);
+    const skus = top.map(p => p.sku);
     const datos = top.map(p => parseFloat(p.indiceRotacion.toFixed(2)));
     const colores = top.map(p => {
         if (p.categoriaRotacion === 'Alta') return '#2ecc71';
@@ -3424,8 +3441,19 @@ function renderChartRotacion(productos) {
         options: {
             responsive: true,
             plugins: {
-                title: { display: true, text: 'Top 30 Productos por Índice de Rotación', color: '#e0e0e0', font: { size: 14 } },
-                legend: { display: false }
+                title: { display: true, text: 'Productos por Índice de Rotación (Top 30)', color: '#e0e0e0', font: { size: 14 } },
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        title: function(items) {
+                            const i = items[0].dataIndex;
+                            return labels[i] + ' (SKU: ' + skus[i] + ')';
+                        },
+                        label: function(ctx) {
+                            return 'Índice de Rotación: ' + ctx.raw;
+                        }
+                    }
+                }
             },
             scales: {
                 x: { ticks: { color: '#aaa', maxRotation: 90, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
@@ -3444,16 +3472,9 @@ function renderTablaABC(productos, filtroClase) {
     html += '</tr></thead><tbody>';
     datos.forEach(p => {
         const badgeClass = 'abc-badge abc-' + p.claseABC.toLowerCase();
-        html += '<tr>';
-        html += '<td>' + p.sku + '</td>';
-        html += '<td>' + p.nombre + '</td>';
-        html += '<td><span class="' + badgeClass + '">' + p.claseABC + '</span></td>';
-        html += '<td>$' + Math.round(p.valorVentas).toLocaleString('es-CL') + '</td>';
-        html += '<td>' + p.pctValor.toFixed(2) + '%</td>';
-        html += '<td>' + p.pctAcumulado.toFixed(2) + '%</td>';
-        html += '<td>' + p.cantidadVendida.toLocaleString('es-CL') + '</td>';
-        html += '<td>' + p.ventasCount + '</td>';
-        html += '</tr>';
+        html += '<tr><td>' + p.sku + '</td><td>' + p.nombre + '</td><td><span class="' + badgeClass + '">' + p.claseABC + '</span></td>';
+        html += '<td>$' + Math.round(p.valorVentas).toLocaleString('es-CL') + '</td><td>' + p.pctValor.toFixed(2) + '%</td><td>' + p.pctAcumulado.toFixed(2) + '%</td>';
+        html += '<td>' + p.cantidadVendida.toLocaleString('es-CL') + '</td><td>' + p.ventasCount + '</td></tr>';
     });
     html += '</tbody></table>';
     container.innerHTML = html;
@@ -3461,7 +3482,38 @@ function renderTablaABC(productos, filtroClase) {
 
 function filtrarTablaABC() {
     const filtro = document.getElementById('filtroClaseABC').value;
-    renderTablaABC(window._datosABC, filtro);
+    const productos = window._datosABC;
+    renderTablaABC(productos, filtro);
+    // Actualizar gráfico pie con la clase filtrada
+    if (filtro && filtro !== 'todas') {
+        const filtrados = productos.filter(p => p.claseABC === filtro);
+        const count = filtrados.length;
+        const valor = filtrados.reduce((s, p) => s + p.valorVentas, 0);
+        const label = 'Clase ' + filtro + ' (' + count + ' SKUs)';
+        const color = filtro === 'A' ? '#2ecc71' : filtro === 'B' ? '#f1c40f' : '#e74c3c';
+        const ctx = document.getElementById('chartABC_pie');
+        if (chartABC_pie) { chartABC_pie.destroy(); chartABC_pie = null; }
+        chartABC_pie = new Chart(ctx, {
+            type: 'doughnut',
+            data: { labels: [label], datasets: [{ data: [valor], backgroundColor: [color], borderWidth: 2, borderColor: '#1e1e2f' }] },
+            options: {
+                responsive: true,
+                plugins: {
+                    title: { display: true, text: 'Distribución - ' + label, color: '#e0e0e0', font: { size: 14 } },
+                    legend: { position: 'bottom', labels: { color: '#ccc', font: { size: 11 } } },
+                    tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': $' + Math.round(ctx.raw).toLocaleString('es-CL'); } } }
+                }
+            }
+        });
+    } else {
+        const countA = productos.filter(p => p.claseABC === 'A').length;
+        const countB = productos.filter(p => p.claseABC === 'B').length;
+        const countC = productos.filter(p => p.claseABC === 'C').length;
+        const valorA = productos.filter(p => p.claseABC === 'A').reduce((s, p) => s + p.valorVentas, 0);
+        const valorB = productos.filter(p => p.claseABC === 'B').reduce((s, p) => s + p.valorVentas, 0);
+        const valorC = productos.filter(p => p.claseABC === 'C').reduce((s, p) => s + p.valorVentas, 0);
+        renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC);
+    }
 }
 
 // ---- Tabla Rotación ----
@@ -3471,28 +3523,23 @@ function renderTablaRotacion(productos, filtroRot) {
     else if (filtroRot === 'media') datos = datos.filter(p => p.indiceRotacion >= 4 && p.indiceRotacion < 12);
     else if (filtroRot === 'baja') datos = datos.filter(p => p.indiceRotacion >= 1 && p.indiceRotacion < 4);
     else if (filtroRot === 'muybaja') datos = datos.filter(p => p.indiceRotacion < 1);
-
-    // Ordenar por índice de rotación desc
     datos.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
 
     const container = document.getElementById('tableContainer-rotacion');
     let html = '<table class="tabla-datos"><thead><tr>';
-    html += '<th>SKU</th><th>Nombre</th><th>Clase ABC</th><th>Stock Actual</th><th>Cant. Vendida</th><th>Índ. Rotación</th><th>Días Inventario</th><th>Cobertura (sem)</th><th>Categoría</th>';
+    html += '<th>SKU</th><th>Nombre</th><th>Clase ABC</th><th>Stock Actual</th><th>Cant. Vendida</th><th>Índ. Rotación</th><th>Días Inv.</th><th>Cobertura (sem)</th><th>Categoría</th>';
     html += '</tr></thead><tbody>';
     datos.forEach(p => {
         const rotClass = 'rot-badge rot-' + p.categoriaRotacion.toLowerCase().replace(/ /g, '').replace('muy', 'muy-');
         const badgeABC = 'abc-badge abc-' + p.claseABC.toLowerCase();
-        html += '<tr>';
-        html += '<td>' + p.sku + '</td>';
-        html += '<td>' + p.nombre + '</td>';
+        html += '<tr><td>' + p.sku + '</td><td>' + p.nombre + '</td>';
         html += '<td><span class="' + badgeABC + '">' + p.claseABC + '</span></td>';
         html += '<td>' + p.stockActual.toLocaleString('es-CL') + '</td>';
         html += '<td>' + p.cantidadVendida.toLocaleString('es-CL') + '</td>';
         html += '<td>' + (p.indiceRotacion >= 999 ? 'Sin stock' : p.indiceRotacion.toFixed(2)) + '</td>';
         html += '<td>' + (p.diasInventario >= 9999 ? 'Sin consumo' : p.diasInventario.toLocaleString('es-CL')) + '</td>';
         html += '<td>' + (p.coberturaSemanas >= 999 ? '∞' : p.coberturaSemanas) + '</td>';
-        html += '<td><span class="' + rotClass + '">' + p.categoriaRotacion + '</span></td>';
-        html += '</tr>';
+        html += '<td><span class="' + rotClass + '">' + p.categoriaRotacion + '</span></td></tr>';
     });
     html += '</tbody></table>';
     container.innerHTML = html;
@@ -3501,6 +3548,84 @@ function renderTablaRotacion(productos, filtroRot) {
 function filtrarTablaRotacion() {
     const filtro = document.getElementById('filtroRotacion').value;
     renderTablaRotacion(window._datosRotacion, filtro);
+    renderChartRotacion(window._datosRotacion, filtro);
+}
+
+// ---- Conclusiones y Mejoras ----
+function generarConclusionesYMejoras(productos, valorTotal, countA, countB, countC, diasPeriodo) {
+    const conclusiones = [];
+    const mejoras = [];
+    const total = productos.length;
+
+    // Concentración ABC
+    const pctA = total > 0 ? ((countA / total) * 100).toFixed(1) : 0;
+    const pctC = total > 0 ? ((countC / total) * 100).toFixed(1) : 0;
+    conclusiones.push('Solo <strong>' + countA + ' productos (' + pctA + '%)</strong> de clase A generan el 80% del ingreso total ($' + Math.round(valorTotal * 0.8).toLocaleString('es-CL') + '). La concentración de valor es alta.');
+
+    // Productos sin ventas
+    const sinVentas = productos.filter(p => p.valorVentas === 0);
+    if (sinVentas.length > 0) {
+        conclusiones.push('<strong>' + sinVentas.length + ' productos</strong> no registran ventas en el período analizado. Esto puede indicar productos obsoletos o de muy baja demanda.');
+    }
+
+    // Productos con alta rotación pero bajo stock
+    const altaRotBajoStock = productos.filter(p => p.categoriaRotacion === 'Alta' && p.stockActual < (p.cantidadVendida / (diasPeriodo / 7)));
+    if (altaRotBajoStock.length > 0) {
+        conclusiones.push('<strong>' + altaRotBajoStock.length + ' productos</strong> de alta rotación tienen stock inferior al consumo semanal promedio, con riesgo de quiebre de stock.');
+    }
+
+    // Productos con sobrestock
+    const sobrestock = productos.filter(p => p.diasInventario > 180 && p.stockActual > 0 && p.diasInventario < 9999);
+    if (sobrestock.length > 0) {
+        conclusiones.push('<strong>' + sobrestock.length + ' productos</strong> tienen más de 180 días de inventario, lo que sugiere sobrestock o demanda decreciente.');
+    }
+
+    // Clase C con stock alto
+    const cConStock = productos.filter(p => p.claseABC === 'C' && p.stockActual > 0);
+    if (cConStock.length > 0) {
+        const stockValorC = cConStock.reduce((s, p) => s + p.stockActual, 0);
+        conclusiones.push('Hay <strong>' + cConStock.length + ' productos clase C con stock (' + stockValorC.toLocaleString('es-CL') + ' unidades)</strong>, que representan capital inmovilizado con bajo retorno.');
+    }
+
+    // Top producto
+    if (productos.length > 0) {
+        const top1 = productos[0];
+        conclusiones.push('El producto estrella es <strong>' + top1.nombre + ' (SKU ' + top1.sku + ')</strong> con $' + Math.round(top1.valorVentas).toLocaleString('es-CL') + ' en ventas (' + top1.pctValor.toFixed(1) + '% del total).');
+    }
+
+    // --- MEJORAS ---
+    mejoras.push('<strong>Priorizar reposición de clase A:</strong> Asegurar niveles de stock óptimos para los ' + countA + ' productos clase A, implementando puntos de reorden automáticos para evitar quiebres que impacten el 80% del ingreso.');
+
+    if (sinVentas.length > 0) {
+        mejoras.push('<strong>Evaluar productos sin movimiento:</strong> Revisar los ' + sinVentas.length + ' productos sin ventas. Considerar liquidaciones, descuentos o discontinuarlos para liberar capital y espacio de almacenamiento.');
+    }
+
+    if (sobrestock.length > 0) {
+        mejoras.push('<strong>Reducir sobrestock:</strong> Los ' + sobrestock.length + ' productos con más de 180 días de inventario deberían ser sujetos a promociones o renegociación de cantidades mínimas con proveedores.');
+    }
+
+    if (altaRotBajoStock.length > 0) {
+        mejoras.push('<strong>Aumentar stock de alta rotación:</strong> ' + altaRotBajoStock.length + ' productos de alta demanda están en riesgo de quiebre. Incrementar niveles de seguridad o frecuencia de reposición.');
+    }
+
+    mejoras.push('<strong>Reclasificar periódicamente:</strong> Ejecutar el análisis ABC mensualmente para detectar cambios en la demanda y ajustar estrategias de compra y almacenamiento.');
+
+    if (countC > countA * 3) {
+        mejoras.push('<strong>Racionalizar catálogo clase C:</strong> Con ' + countC + ' productos clase C (' + pctC + '% del catálogo) que solo aportan el 5% del valor, evaluar cuáles mantener y cuáles descontinuar para simplificar operaciones.');
+    }
+
+    mejoras.push('<strong>Negociar con proveedores clave:</strong> Los productos clase A deben tener condiciones preferenciales de compra (plazos, descuentos por volumen, entregas más frecuentes) para maximizar margen.');
+
+    // Render
+    const concEl = document.getElementById('inv-conclusiones');
+    const concLista = document.getElementById('inv-conclusiones-lista');
+    concLista.innerHTML = conclusiones.map(c => '<li>' + c + '</li>').join('');
+    concEl.style.display = 'block';
+
+    const mejEl = document.getElementById('inv-mejoras');
+    const mejLista = document.getElementById('inv-mejoras-lista');
+    mejLista.innerHTML = mejoras.map(m => '<li>' + m + '</li>').join('');
+    mejEl.style.display = 'block';
 }
 
 // ---- Exportar ABC ----
