@@ -3416,8 +3416,8 @@ function renderChartRotacion(productos, filtroRot) {
 
     filtrados.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
     const top = filtrados.slice(0, Math.min(30, filtrados.length));
-    const labels = top.map(p => p.nombre || p.sku);
-    const skus = top.map(p => p.sku);
+    const labels = top.map(p => p.sku);
+    const nombres = top.map(p => p.nombre || p.sku);
     const datos = top.map(p => parseFloat(p.indiceRotacion.toFixed(2)));
     const colores = top.map(p => {
         if (p.categoriaRotacion === 'Alta') return '#2ecc71';
@@ -3447,7 +3447,7 @@ function renderChartRotacion(productos, filtroRot) {
                     callbacks: {
                         title: function(items) {
                             const i = items[0].dataIndex;
-                            return labels[i] + ' (SKU: ' + skus[i] + ')';
+                            return nombres[i] + ' (SKU: ' + labels[i] + ')';
                         },
                         label: function(ctx) {
                             return 'Índice de Rotación: ' + ctx.raw;

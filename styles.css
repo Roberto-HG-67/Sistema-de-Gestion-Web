@@ -2164,6 +2164,18 @@ button:active {
     padding: 8px 14px;
 }
 
+/* Centrar columnas numéricas ABC */
+#tableContainer-abc table th:nth-child(n+3),
+#tableContainer-abc table td:nth-child(n+3) {
+    text-align: center;
+}
+
+/* Centrar columnas numéricas Rotación */
+#tableContainer-rotacion table th:nth-child(n+3),
+#tableContainer-rotacion table td:nth-child(n+3) {
+    text-align: center;
+}
+
 /* Conclusiones y Mejoras */
 .inv-insight-box {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
