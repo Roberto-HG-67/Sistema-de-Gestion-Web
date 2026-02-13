@@ -40,6 +40,8 @@ function cambiarVentana(ventanaId) {
         cargarHistorialPrecios();
     } else if (ventanaId === 'control-entradas') {
         inicializarControlEntradas();
+    } else if (ventanaId === 'analisis-inventario') {
+        cargarAnalisisInventario();
     }
 }
 
@@ -3092,4 +3094,443 @@ function guardarCargaMasiva() {
     cerrarModalCargaMasiva();
     renderizarEntradas();
     alert(`✅ Se agendaron ${agregados} entrada${agregados !== 1 ? 's' : ''} para el ${fecha}.`);
+}
+
+// ===== VENTANA ANÁLISIS DE INVENTARIO =====
+let chartABC_pie = null;
+let chartABC_pareto = null;
+let chartRotacion = null;
+window._datosABC = [];
+window._datosRotacion = [];
+
+async function cargarAnalisisInventario() {
+    const loading = document.getElementById('loading-inventario');
+    const errorEl = document.getElementById('error-inventario');
+    loading.style.display = 'block';
+    errorEl.style.display = 'none';
+
+    try {
+        // Cargar datos necesarios si no están cargados
+        if (datosSKU.length === 0) {
+            const resp = await fetch('Excel/SKU.xlsx');
+            if (!resp.ok) throw new Error('No se pudo cargar SKU.xlsx');
+            const buf = await resp.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            datosSKU = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        }
+        if (datosBBDD.length === 0) {
+            const resp = await fetch('Excel/BBDD.xlsx');
+            if (!resp.ok) throw new Error('No se pudo cargar BBDD.xlsx');
+            const buf = await resp.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            datosBBDD = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        }
+        if (datosStockActual.length === 0) {
+            const resp = await fetch('Excel/Stock Actual.xlsx');
+            if (!resp.ok) throw new Error('No se pudo cargar Stock Actual.xlsx');
+            const buf = await resp.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            datosStockActual = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        }
+
+        // Índices SKU
+        const headersSKU = datosSKU[0];
+        const iSKU = headersSKU.findIndex(h => h && h.toLowerCase() === 'sku');
+        const iNombre = headersSKU.findIndex(h => h && h.toLowerCase().includes('nombre'));
+
+        // Índices BBDD
+        const headersBBDD = datosBBDD[0];
+        let iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'idproducto');
+        if (iIDProd < 0) iIDProd = headersBBDD.findIndex(h => h && h.toLowerCase() === 'id entero');
+        const iCantBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('cantidad'));
+        const iPrecioBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'precio');
+        let iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'fecha entero');
+        if (iFechaBBDD < 0) iFechaBBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
+
+        // Índices Stock Actual
+        const headersStock = datosStockActual[0];
+        const iCodigoStock = headersStock.findIndex(h => h && (h.toLowerCase().includes('código') || h.toLowerCase().includes('codigo')));
+        const iStockNunoa = headersStock.findIndex(h => h && h.toLowerCase().includes('ñuñoa'));
+
+        const EXCEL_EPOCH = new Date('1899-12-30').getTime();
+        function excelSerialToDate(serial) {
+            const num = Number(serial);
+            if (isNaN(num) || num <= 0) return null;
+            return new Date(EXCEL_EPOCH + num * 86400000);
+        }
+
+        // Calcular ventas por producto
+        const ventasPorSKU = {}; // sku -> { cantidadTotal, valorTotal, ventasCount, fechaMin, fechaMax }
+        for (let i = 1; i < datosBBDD.length; i++) {
+            const fila = datosBBDD[i];
+            const idProd = String(fila[iIDProd] || '').trim();
+            if (!idProd) continue;
+            const cantidad = Number(fila[iCantBBDD]) || 0;
+            const precio = iPrecioBBDD >= 0 ? (Number(fila[iPrecioBBDD]) || 0) : 0;
+            const valor = cantidad * precio;
+            const fechaVal = fila[iFechaBBDD];
+            let fecha = null;
+            if (typeof fechaVal === 'number') fecha = excelSerialToDate(fechaVal);
+            else if (fechaVal instanceof Date) fecha = fechaVal;
+            else if (typeof fechaVal === 'string') fecha = new Date(fechaVal);
+
+            if (!ventasPorSKU[idProd]) {
+                ventasPorSKU[idProd] = { cantidadTotal: 0, valorTotal: 0, ventasCount: 0, fechaMin: null, fechaMax: null };
+            }
+            const v = ventasPorSKU[idProd];
+            v.cantidadTotal += cantidad;
+            v.valorTotal += valor;
+            v.ventasCount++;
+            if (fecha && !isNaN(fecha.getTime())) {
+                if (!v.fechaMin || fecha < v.fechaMin) v.fechaMin = fecha;
+                if (!v.fechaMax || fecha > v.fechaMax) v.fechaMax = fecha;
+            }
+        }
+
+        // Stock actual por código
+        const stockPorCodigo = {};
+        for (let i = 1; i < datosStockActual.length; i++) {
+            const fila = datosStockActual[i];
+            const codigo = String(fila[iCodigoStock] || '').trim();
+            if (codigo) stockPorCodigo[codigo] = Number(fila[iStockNunoa]) || 0;
+        }
+
+        // Determinar rango de fechas global para cálculos de rotación
+        let fechaGlobalMin = null, fechaGlobalMax = null;
+        Object.values(ventasPorSKU).forEach(v => {
+            if (v.fechaMin && (!fechaGlobalMin || v.fechaMin < fechaGlobalMin)) fechaGlobalMin = v.fechaMin;
+            if (v.fechaMax && (!fechaGlobalMax || v.fechaMax > fechaGlobalMax)) fechaGlobalMax = v.fechaMax;
+        });
+        const diasPeriodo = (fechaGlobalMin && fechaGlobalMax)
+            ? Math.max(1, Math.round((fechaGlobalMax - fechaGlobalMin) / 86400000))
+            : 365;
+
+        // Construir datos por producto
+        const productos = [];
+        for (let i = 1; i < datosSKU.length; i++) {
+            const fila = datosSKU[i];
+            const sku = fila[iSKU];
+            if (sku === undefined || sku === null) continue;
+            const skuStr = String(sku).trim();
+            const skuInt = String(Math.floor(Number(sku)));
+            const nombre = fila[iNombre] || '';
+            const venta = ventasPorSKU[skuStr] || ventasPorSKU[skuInt] || { cantidadTotal: 0, valorTotal: 0, ventasCount: 0 };
+            const stockActual = stockPorCodigo[skuStr] !== undefined ? stockPorCodigo[skuStr] : (stockPorCodigo[skuInt] !== undefined ? stockPorCodigo[skuInt] : 0);
+            productos.push({
+                sku: skuStr,
+                nombre,
+                cantidadVendida: venta.cantidadTotal,
+                valorVentas: venta.valorTotal,
+                ventasCount: venta.ventasCount,
+                stockActual
+            });
+        }
+
+        // ===== CLASIFICACIÓN ABC =====
+        const valorTotal = productos.reduce((s, p) => s + p.valorVentas, 0);
+        // Ordenar por valor descendente
+        productos.sort((a, b) => b.valorVentas - a.valorVentas);
+        let acumulado = 0;
+        productos.forEach(p => {
+            acumulado += p.valorVentas;
+            const pctAcum = valorTotal > 0 ? (acumulado / valorTotal) * 100 : 0;
+            p.pctValor = valorTotal > 0 ? (p.valorVentas / valorTotal) * 100 : 0;
+            p.pctAcumulado = pctAcum;
+            if (pctAcum <= 80) p.claseABC = 'A';
+            else if (pctAcum <= 95) p.claseABC = 'B';
+            else p.claseABC = 'C';
+        });
+
+        // ===== ROTACIÓN =====
+        productos.forEach(p => {
+            const consumoDiario = diasPeriodo > 0 ? p.cantidadVendida / diasPeriodo : 0;
+            const consumoSemanal = consumoDiario * 7;
+            p.indiceRotacion = p.stockActual > 0 ? p.cantidadVendida / p.stockActual : (p.cantidadVendida > 0 ? 999 : 0);
+            p.diasInventario = consumoDiario > 0 ? Math.round(p.stockActual / consumoDiario) : (p.stockActual > 0 ? 9999 : 0);
+            p.coberturaSemanas = consumoSemanal > 0 ? parseFloat((p.stockActual / consumoSemanal).toFixed(1)) : (p.stockActual > 0 ? 999 : 0);
+            // Categoría de rotación
+            if (p.indiceRotacion >= 12) p.categoriaRotacion = 'Alta';
+            else if (p.indiceRotacion >= 4) p.categoriaRotacion = 'Media';
+            else if (p.indiceRotacion >= 1) p.categoriaRotacion = 'Baja';
+            else p.categoriaRotacion = 'Muy Baja';
+        });
+
+        window._datosABC = productos;
+        window._datosRotacion = productos;
+
+        // Render KPIs
+        const countA = productos.filter(p => p.claseABC === 'A').length;
+        const countB = productos.filter(p => p.claseABC === 'B').length;
+        const countC = productos.filter(p => p.claseABC === 'C').length;
+        const valorA = productos.filter(p => p.claseABC === 'A').reduce((s, p) => s + p.valorVentas, 0);
+        const valorB = productos.filter(p => p.claseABC === 'B').reduce((s, p) => s + p.valorVentas, 0);
+        const valorC = productos.filter(p => p.claseABC === 'C').reduce((s, p) => s + p.valorVentas, 0);
+
+        document.getElementById('kpi-total-skus').textContent = productos.length;
+        document.getElementById('kpi-clase-a').textContent = countA;
+        document.getElementById('kpi-clase-a-pct').textContent = valorTotal > 0 ? ((valorA / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+        document.getElementById('kpi-clase-b').textContent = countB;
+        document.getElementById('kpi-clase-b-pct').textContent = valorTotal > 0 ? ((valorB / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+        document.getElementById('kpi-clase-c').textContent = countC;
+        document.getElementById('kpi-clase-c-pct').textContent = valorTotal > 0 ? ((valorC / valorTotal) * 100).toFixed(1) + '% del valor' : '0% del valor';
+        document.getElementById('kpi-valor-total').textContent = '$' + Math.round(valorTotal).toLocaleString('es-CL');
+        document.getElementById('inv-kpi-container').style.display = 'flex';
+
+        // Render gráficos ABC
+        renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC);
+        renderChartABC_pareto(productos);
+        renderChartRotacion(productos);
+
+        // Render tablas
+        renderTablaABC(productos);
+        renderTablaRotacion(productos);
+
+        loading.style.display = 'none';
+    } catch (err) {
+        loading.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorEl.textContent = '❌ Error: ' + err.message;
+        console.error('Error en análisis de inventario:', err);
+    }
+}
+
+// ---- Gráficos ABC ----
+function renderChartABC_pie(countA, countB, countC, valorA, valorB, valorC) {
+    const ctx = document.getElementById('chartABC_pie');
+    if (chartABC_pie) { chartABC_pie.destroy(); chartABC_pie = null; }
+    chartABC_pie = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+            labels: ['Clase A (' + countA + ' SKUs)', 'Clase B (' + countB + ' SKUs)', 'Clase C (' + countC + ' SKUs)'],
+            datasets: [{
+                data: [valorA, valorB, valorC],
+                backgroundColor: ['#2ecc71', '#f1c40f', '#e74c3c'],
+                borderWidth: 2,
+                borderColor: '#1e1e2f'
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Distribución de Valor por Clase', color: '#e0e0e0', font: { size: 14 } },
+                legend: { position: 'bottom', labels: { color: '#ccc', font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            const total = ctx.dataset.data.reduce((a, b) => a + b, 0);
+                            const pct = total > 0 ? ((ctx.raw / total) * 100).toFixed(1) : 0;
+                            return ctx.label + ': $' + Math.round(ctx.raw).toLocaleString('es-CL') + ' (' + pct + '%)';
+                        }
+                    }
+                }
+            }
+        }
+    });
+}
+
+function renderChartABC_pareto(productos) {
+    const ctx = document.getElementById('chartABC_pareto');
+    if (chartABC_pareto) { chartABC_pareto.destroy(); chartABC_pareto = null; }
+
+    // Tomar los primeros 30 productos para el pareto (por valor)
+    const top = productos.slice(0, Math.min(30, productos.length));
+    const labels = top.map(p => p.sku);
+    const valores = top.map(p => p.valorVentas);
+    const acumulados = top.map(p => p.pctAcumulado);
+    const colores = top.map(p => p.claseABC === 'A' ? '#2ecc71' : p.claseABC === 'B' ? '#f1c40f' : '#e74c3c');
+
+    chartABC_pareto = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [
+                {
+                    label: 'Valor Ventas ($)',
+                    data: valores,
+                    backgroundColor: colores,
+                    borderColor: colores,
+                    borderWidth: 1,
+                    yAxisID: 'y',
+                    order: 2
+                },
+                {
+                    label: '% Acumulado',
+                    data: acumulados,
+                    type: 'line',
+                    borderColor: '#00bcd4',
+                    backgroundColor: 'rgba(0,188,212,0.1)',
+                    pointRadius: 2,
+                    borderWidth: 2,
+                    yAxisID: 'y1',
+                    order: 1
+                }
+            ]
+        },
+        options: {
+            responsive: true,
+            interaction: { mode: 'index', intersect: false },
+            plugins: {
+                title: { display: true, text: 'Diagrama de Pareto (Top 30)', color: '#e0e0e0', font: { size: 14 } },
+                legend: { labels: { color: '#ccc', font: { size: 11 } } },
+                tooltip: {
+                    callbacks: {
+                        label: function(ctx) {
+                            if (ctx.dataset.yAxisID === 'y1') return ctx.dataset.label + ': ' + ctx.raw.toFixed(1) + '%';
+                            return ctx.dataset.label + ': $' + Math.round(ctx.raw).toLocaleString('es-CL');
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: { ticks: { color: '#aaa', maxRotation: 90, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { position: 'left', ticks: { color: '#aaa', callback: v => '$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: 'rgba(255,255,255,0.08)' }, title: { display: true, text: 'Valor ($)', color: '#aaa' } },
+                y1: { position: 'right', min: 0, max: 100, ticks: { color: '#00bcd4', callback: v => v + '%' }, grid: { drawOnChartArea: false }, title: { display: true, text: '% Acumulado', color: '#00bcd4' } }
+            }
+        }
+    });
+}
+
+// ---- Gráfico Rotación ----
+function renderChartRotacion(productos) {
+    const ctx = document.getElementById('chartRotacion');
+    if (chartRotacion) { chartRotacion.destroy(); chartRotacion = null; }
+
+    // Ordenar por índice de rotación desc (excluir 999 "sin stock")
+    const filtrados = productos.filter(p => p.indiceRotacion > 0 && p.indiceRotacion < 999);
+    filtrados.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
+    const top = filtrados.slice(0, Math.min(30, filtrados.length));
+
+    const labels = top.map(p => p.sku);
+    const datos = top.map(p => parseFloat(p.indiceRotacion.toFixed(2)));
+    const colores = top.map(p => {
+        if (p.categoriaRotacion === 'Alta') return '#2ecc71';
+        if (p.categoriaRotacion === 'Media') return '#f1c40f';
+        if (p.categoriaRotacion === 'Baja') return '#e67e22';
+        return '#e74c3c';
+    });
+
+    chartRotacion = new Chart(ctx, {
+        type: 'bar',
+        data: {
+            labels,
+            datasets: [{
+                label: 'Índice de Rotación',
+                data: datos,
+                backgroundColor: colores,
+                borderColor: colores,
+                borderWidth: 1
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                title: { display: true, text: 'Top 30 Productos por Índice de Rotación', color: '#e0e0e0', font: { size: 14 } },
+                legend: { display: false }
+            },
+            scales: {
+                x: { ticks: { color: '#aaa', maxRotation: 90, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
+                y: { ticks: { color: '#aaa' }, grid: { color: 'rgba(255,255,255,0.08)' }, title: { display: true, text: 'Índice de Rotación', color: '#aaa' } }
+            }
+        }
+    });
+}
+
+// ---- Tabla ABC ----
+function renderTablaABC(productos, filtroClase) {
+    const datos = filtroClase && filtroClase !== 'todas' ? productos.filter(p => p.claseABC === filtroClase) : productos;
+    const container = document.getElementById('tableContainer-abc');
+    let html = '<table class="tabla-datos"><thead><tr>';
+    html += '<th>SKU</th><th>Nombre</th><th>Clase</th><th>Valor Ventas ($)</th><th>% del Total</th><th>% Acumulado</th><th>Cant. Vendida</th><th>Nro. Ventas</th>';
+    html += '</tr></thead><tbody>';
+    datos.forEach(p => {
+        const badgeClass = 'abc-badge abc-' + p.claseABC.toLowerCase();
+        html += '<tr>';
+        html += '<td>' + p.sku + '</td>';
+        html += '<td>' + p.nombre + '</td>';
+        html += '<td><span class="' + badgeClass + '">' + p.claseABC + '</span></td>';
+        html += '<td>$' + Math.round(p.valorVentas).toLocaleString('es-CL') + '</td>';
+        html += '<td>' + p.pctValor.toFixed(2) + '%</td>';
+        html += '<td>' + p.pctAcumulado.toFixed(2) + '%</td>';
+        html += '<td>' + p.cantidadVendida.toLocaleString('es-CL') + '</td>';
+        html += '<td>' + p.ventasCount + '</td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function filtrarTablaABC() {
+    const filtro = document.getElementById('filtroClaseABC').value;
+    renderTablaABC(window._datosABC, filtro);
+}
+
+// ---- Tabla Rotación ----
+function renderTablaRotacion(productos, filtroRot) {
+    let datos = [...productos];
+    if (filtroRot === 'alta') datos = datos.filter(p => p.indiceRotacion >= 12 && p.indiceRotacion < 999);
+    else if (filtroRot === 'media') datos = datos.filter(p => p.indiceRotacion >= 4 && p.indiceRotacion < 12);
+    else if (filtroRot === 'baja') datos = datos.filter(p => p.indiceRotacion >= 1 && p.indiceRotacion < 4);
+    else if (filtroRot === 'muybaja') datos = datos.filter(p => p.indiceRotacion < 1);
+
+    // Ordenar por índice de rotación desc
+    datos.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
+
+    const container = document.getElementById('tableContainer-rotacion');
+    let html = '<table class="tabla-datos"><thead><tr>';
+    html += '<th>SKU</th><th>Nombre</th><th>Clase ABC</th><th>Stock Actual</th><th>Cant. Vendida</th><th>Índ. Rotación</th><th>Días Inventario</th><th>Cobertura (sem)</th><th>Categoría</th>';
+    html += '</tr></thead><tbody>';
+    datos.forEach(p => {
+        const rotClass = 'rot-badge rot-' + p.categoriaRotacion.toLowerCase().replace(/ /g, '').replace('muy', 'muy-');
+        const badgeABC = 'abc-badge abc-' + p.claseABC.toLowerCase();
+        html += '<tr>';
+        html += '<td>' + p.sku + '</td>';
+        html += '<td>' + p.nombre + '</td>';
+        html += '<td><span class="' + badgeABC + '">' + p.claseABC + '</span></td>';
+        html += '<td>' + p.stockActual.toLocaleString('es-CL') + '</td>';
+        html += '<td>' + p.cantidadVendida.toLocaleString('es-CL') + '</td>';
+        html += '<td>' + (p.indiceRotacion >= 999 ? 'Sin stock' : p.indiceRotacion.toFixed(2)) + '</td>';
+        html += '<td>' + (p.diasInventario >= 9999 ? 'Sin consumo' : p.diasInventario.toLocaleString('es-CL')) + '</td>';
+        html += '<td>' + (p.coberturaSemanas >= 999 ? '∞' : p.coberturaSemanas) + '</td>';
+        html += '<td><span class="' + rotClass + '">' + p.categoriaRotacion + '</span></td>';
+        html += '</tr>';
+    });
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function filtrarTablaRotacion() {
+    const filtro = document.getElementById('filtroRotacion').value;
+    renderTablaRotacion(window._datosRotacion, filtro);
+}
+
+// ---- Exportar ABC ----
+function exportarABC() {
+    const datos = window._datosABC;
+    if (!datos || datos.length === 0) return alert('No hay datos para exportar.');
+    const filas = [['SKU', 'Nombre', 'Clase ABC', 'Valor Ventas ($)', '% del Total', '% Acumulado', 'Cant. Vendida', 'Nro. Ventas']];
+    datos.forEach(p => {
+        filas.push([p.sku, p.nombre, p.claseABC, Math.round(p.valorVentas), parseFloat(p.pctValor.toFixed(2)), parseFloat(p.pctAcumulado.toFixed(2)), p.cantidadVendida, p.ventasCount]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Clasificación ABC');
+    XLSX.writeFile(wb, 'Clasificacion_ABC.xlsx');
+}
+
+// ---- Exportar Rotación ----
+function exportarRotacion() {
+    const datos = window._datosRotacion;
+    if (!datos || datos.length === 0) return alert('No hay datos para exportar.');
+    const filas = [['SKU', 'Nombre', 'Clase ABC', 'Stock Actual', 'Cant. Vendida', 'Índice Rotación', 'Días Inventario', 'Cobertura (semanas)', 'Categoría Rotación']];
+    datos.forEach(p => {
+        filas.push([p.sku, p.nombre, p.claseABC, p.stockActual, p.cantidadVendida,
+            p.indiceRotacion >= 999 ? 'Sin stock' : parseFloat(p.indiceRotacion.toFixed(2)),
+            p.diasInventario >= 9999 ? 'Sin consumo' : p.diasInventario,
+            p.coberturaSemanas >= 999 ? '∞' : p.coberturaSemanas,
+            p.categoriaRotacion]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(filas);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Rotación Inventario');
+    XLSX.writeFile(wb, 'Rotacion_Inventario.xlsx');
 }

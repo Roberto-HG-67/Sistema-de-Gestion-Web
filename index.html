@@ -49,6 +49,7 @@
             <button class="tab-button" onclick="cambiarVentana('consolidado')">Consolidado</button>
             <button class="tab-button" onclick="cambiarVentana('ingreso-productos')">Ingreso de Productos</button>
             <button class="tab-button" onclick="cambiarVentana('historial-precios')">Historial de Precios</button>
+            <button class="tab-button" onclick="cambiarVentana('analisis-inventario')">Análisis de Inventario</button>
         </div>
 
         <!-- Ventana SKU -->
@@ -421,6 +422,91 @@
 
             <h3 style="margin-top: 20px;">Registros actuales</h3>
             <div id="tableContainer-historial" class="table-container"></div>
+        </div>
+
+        <!-- Ventana Análisis de Inventario -->
+        <div id="analisis-inventario" class="ventana">
+            <h2>&#128230; Análisis de Inventario</h2>
+
+            <!-- KPI Cards -->
+            <div class="inv-kpi-container" id="inv-kpi-container" style="display:none;">
+                <div class="inv-kpi-card">
+                    <div class="inv-kpi-label">Total SKUs</div>
+                    <div class="inv-kpi-value" id="kpi-total-skus">0</div>
+                </div>
+                <div class="inv-kpi-card kpi-a">
+                    <div class="inv-kpi-label">Clase A</div>
+                    <div class="inv-kpi-value" id="kpi-clase-a">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-a-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card kpi-b">
+                    <div class="inv-kpi-label">Clase B</div>
+                    <div class="inv-kpi-value" id="kpi-clase-b">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-b-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card kpi-c">
+                    <div class="inv-kpi-label">Clase C</div>
+                    <div class="inv-kpi-value" id="kpi-clase-c">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-c-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card">
+                    <div class="inv-kpi-label">Valor Total Ventas</div>
+                    <div class="inv-kpi-value" id="kpi-valor-total">$0</div>
+                </div>
+            </div>
+
+            <!-- Sección ABC -->
+            <div class="inv-section">
+                <h3>&#128202; Clasificación ABC</h3>
+                <p class="inv-desc">Clasificación basada en el principio de Pareto (80/15/5): los productos Clase A representan el 80% del valor de ventas, Clase B el siguiente 15%, y Clase C el 5% restante.</p>
+                <div class="inv-chart-row">
+                    <div class="inv-chart-box">
+                        <canvas id="chartABC_pie"></canvas>
+                    </div>
+                    <div class="inv-chart-box">
+                        <canvas id="chartABC_pareto"></canvas>
+                    </div>
+                </div>
+                <div class="inv-filter-bar">
+                    <label>Filtrar clase:
+                        <select id="filtroClaseABC" onchange="filtrarTablaABC()">
+                            <option value="todas">Todas</option>
+                            <option value="A">Clase A</option>
+                            <option value="B">Clase B</option>
+                            <option value="C">Clase C</option>
+                        </select>
+                    </label>
+                    <button class="btn-exportar-inv" onclick="exportarABC()">&#128229; Exportar ABC a Excel</button>
+                </div>
+                <div id="tableContainer-abc" class="table-container"></div>
+            </div>
+
+            <!-- Sección Rotación -->
+            <div class="inv-section">
+                <h3>&#128260; Análisis de Rotación de Inventario</h3>
+                <p class="inv-desc">Indicadores de rotación: Índice de Rotación (ventas / stock), Días de Inventario (stock / consumo diario), y Cobertura en semanas. Productos con alta rotación requieren reposición frecuente; baja rotación indica sobrestock o baja demanda.</p>
+                <div class="inv-chart-row">
+                    <div class="inv-chart-box-full">
+                        <canvas id="chartRotacion"></canvas>
+                    </div>
+                </div>
+                <div class="inv-filter-bar">
+                    <label>Filtrar rotación:
+                        <select id="filtroRotacion" onchange="filtrarTablaRotacion()">
+                            <option value="todas">Todas</option>
+                            <option value="alta">Alta Rotación (>12)</option>
+                            <option value="media">Media Rotación (4-12)</option>
+                            <option value="baja">Baja Rotación (1-4)</option>
+                            <option value="muybaja">Muy Baja / Sin Rotación (<1)</option>
+                        </select>
+                    </label>
+                    <button class="btn-exportar-inv" onclick="exportarRotacion()">&#128229; Exportar Rotación a Excel</button>
+                </div>
+                <div id="tableContainer-rotacion" class="table-container"></div>
+            </div>
+
+            <div id="loading-inventario" class="loading" style="display: none;">&#9203; Cargando análisis de inventario...</div>
+            <div id="error-inventario" class="error" style="display: none;"></div>
         </div>
     </div>
 
