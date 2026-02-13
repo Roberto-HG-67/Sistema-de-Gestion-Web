@@ -1037,7 +1037,10 @@ function crearGraficoVentas(datos) {
 
 function actualizarGraficoVentas() {
     const ctx = document.getElementById('chartVentas');
-    if (chartVentas) chartVentas.destroy();
+    if (chartVentas) {
+        chartVentas.destroy();
+        chartVentas = null;
+    }
     
     const datos = window._datosGraficoVentas;
     if (!datos || datos.length === 0) return;
@@ -1048,8 +1051,8 @@ function actualizarGraficoVentas() {
     
     // Copiar y ordenar
     const datosOrdenados = [...datos].sort((a, b) => {
-        const valA = a[config.campo];
-        const valB = b[config.campo];
+        const valA = a[config.campo] || 0;
+        const valB = b[config.campo] || 0;
         return config.asc ? valA - valB : valB - valA;
     });
     
@@ -1057,29 +1060,6 @@ function actualizarGraficoVentas() {
     const labels = top20.map(d => d.nombre);
     
     const datasets = [];
-    
-    if (mostrarCantidad) {
-        datasets.push({
-            label: 'Cantidad Vendida',
-            data: top20.map(d => d.cantidad),
-            backgroundColor: 'rgba(118, 75, 162, 0.7)',
-            borderColor: 'rgba(118, 75, 162, 1)',
-            borderWidth: 1,
-            yAxisID: 'y'
-        });
-    }
-    
-    if (mostrarTotal) {
-        datasets.push({
-            label: 'Total Vendido ($)',
-            data: top20.map(d => d.total),
-            backgroundColor: 'rgba(14, 165, 233, 0.7)',
-            borderColor: 'rgba(14, 165, 233, 1)',
-            borderWidth: 1,
-            yAxisID: 'y1'
-        });
-    }
-    
     const scales = {
         x: {
             ticks: {
@@ -1091,37 +1071,62 @@ function actualizarGraficoVentas() {
         }
     };
     
-    if (mostrarCantidad) {
+    if (mostrarCantidad && mostrarTotal) {
+        // Ambas barras: eje izquierdo para cantidad, eje derecho para total
+        datasets.push({
+            label: 'Cantidad Vendida',
+            data: top20.map(d => d.cantidad),
+            backgroundColor: 'rgba(118, 75, 162, 0.7)',
+            borderColor: 'rgba(118, 75, 162, 1)',
+            borderWidth: 1,
+            yAxisID: 'y'
+        });
+        datasets.push({
+            label: 'Total Vendido ($)',
+            data: top20.map(d => d.total),
+            backgroundColor: 'rgba(14, 165, 233, 0.7)',
+            borderColor: 'rgba(14, 165, 233, 1)',
+            borderWidth: 1,
+            yAxisID: 'y1'
+        });
         scales.y = {
             type: 'linear',
             position: 'left',
             beginAtZero: true,
-            title: { display: true, text: 'Cantidad' },
+            title: { display: true, text: 'Cantidad', color: 'rgba(118, 75, 162, 1)' },
             ticks: { color: 'rgba(118, 75, 162, 1)' }
         };
-    }
-    
-    if (mostrarTotal) {
         scales.y1 = {
             type: 'linear',
             position: 'right',
             beginAtZero: true,
-            title: { display: true, text: 'Total ($)' },
+            title: { display: true, text: 'Total ($)', color: 'rgba(14, 165, 233, 1)' },
             ticks: { color: 'rgba(14, 165, 233, 1)' },
             grid: { drawOnChartArea: false }
         };
-    }
-    
-    // Si solo hay un dataset, usar eje y izquierdo
-    if (mostrarTotal && !mostrarCantidad) {
-        datasets[0].yAxisID = 'y';
-        delete scales.y1;
+    } else if (mostrarCantidad) {
+        datasets.push({
+            label: 'Cantidad Vendida',
+            data: top20.map(d => d.cantidad),
+            backgroundColor: 'rgba(118, 75, 162, 0.7)',
+            borderColor: 'rgba(118, 75, 162, 1)',
+            borderWidth: 1
+        });
         scales.y = {
-            type: 'linear',
-            position: 'left',
             beginAtZero: true,
-            title: { display: true, text: 'Total ($)' },
-            ticks: { color: 'rgba(14, 165, 233, 1)' }
+            title: { display: true, text: 'Cantidad' }
+        };
+    } else if (mostrarTotal) {
+        datasets.push({
+            label: 'Total Vendido ($)',
+            data: top20.map(d => d.total),
+            backgroundColor: 'rgba(14, 165, 233, 0.7)',
+            borderColor: 'rgba(14, 165, 233, 1)',
+            borderWidth: 1
+        });
+        scales.y = {
+            beginAtZero: true,
+            title: { display: true, text: 'Total ($)' }
         };
     }
     
@@ -1130,20 +1135,20 @@ function actualizarGraficoVentas() {
     
     chartVentas = new Chart(ctx, {
         type: 'bar',
-        data: { labels, datasets },
+        data: { labels: labels, datasets: datasets },
         options: {
             responsive: true,
             maintainAspectRatio: false,
-            scales,
+            scales: scales,
             plugins: {
                 title: {
                     display: true,
-                    text: `Top 20 Productos - Ordenado por ${ordenLabel} (${dirLabel})`
+                    text: 'Top 20 - Ordenado por ' + ordenLabel + ' (' + dirLabel + ')'
                 },
                 tooltip: {
                     callbacks: {
                         label: function(context) {
-                            let value = context.parsed.y;
+                            var value = context.parsed.y;
                             if (value >= 1000) value = value.toLocaleString('es-CL');
                             return context.dataset.label + ': ' + value;
                         }
@@ -1153,7 +1158,6 @@ function actualizarGraficoVentas() {
         }
     });
     
-    // Actualizar estado visual de botones
     actualizarBotonesGraficoVentas();
 }
 
