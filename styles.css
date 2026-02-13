@@ -1906,3 +1906,18 @@ button:active {
         font-size: 2.2em;
     }
 }
+
+/* Botón de ordenar en columnas */
+.sort-btn {
+    cursor: pointer;
+    user-select: none;
+    font-size: 0.85em;
+    color: #0ea5e9;
+    margin-left: 4px;
+    transition: color 0.2s ease;
+    display: inline-block;
+}
+
+.sort-btn:hover {
+    color: #0369a1;
+}

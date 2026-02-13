@@ -891,6 +891,45 @@ function actualizarAnalisisVentas() {
     crearGraficoVentas(datosGrafico);
 }
 
+// Estado de ordenamiento para Análisis de Ventas
+window._sortEstadoVentas = { col: -1, asc: true };
+
+// Ordenar tabla de Análisis de Ventas
+function ordenarTablaVentas(colIndex) {
+    if (!window._datosTablaVentas || window._datosTablaVentas.length < 2) return;
+    
+    const estado = window._sortEstadoVentas;
+    if (estado.col === colIndex) {
+        estado.asc = !estado.asc;
+    } else {
+        estado.col = colIndex;
+        estado.asc = true;
+    }
+    
+    const headers = window._datosTablaVentas[0];
+    const filas = window._datosTablaVentas.slice(1);
+    
+    filas.sort((a, b) => {
+        let valA = a[colIndex];
+        let valB = b[colIndex];
+        // Intentar comparar como número
+        const numA = Number(valA);
+        const numB = Number(valB);
+        if (!isNaN(numA) && !isNaN(numB)) {
+            return estado.asc ? numA - numB : numB - numA;
+        }
+        // Comparar como texto
+        valA = String(valA || '').toLowerCase();
+        valB = String(valB || '').toLowerCase();
+        if (valA < valB) return estado.asc ? -1 : 1;
+        if (valA > valB) return estado.asc ? 1 : -1;
+        return 0;
+    });
+    
+    const datosOrdenados = [headers, ...filas];
+    mostrarTablaVentasSinFiltrosNumericos(datosOrdenados, 'tableContainer-analisis-ventas');
+}
+
 // Tabla para Análisis de Ventas: filtros solo en SKU y Nombre, no en columnas numéricas
 function mostrarTablaVentasSinFiltrosNumericos(datos, containerId) {
     const tableContainer = document.getElementById(containerId);
@@ -902,25 +941,46 @@ function mostrarTablaVentasSinFiltrosNumericos(datos, containerId) {
     const headers = datos[0];
     const filas = datos.slice(1);
     
+    // Guardar datos para poder reordenar
+    window._datosTablaVentas = datos;
+    
     // Columnas a centrar
     const colsCentrar = ['número de ventas', 'cantidad vendida', 'total vendido'];
+    // Columnas que son ordenables (por índice: 0=SKU, 2=Nro ventas, 3=Cantidad, 4=Total)
+    const colsOrdenables = [0, 2, 3, 4];
+    
+    const estado = window._sortEstadoVentas;
     
     let html = '<table class="excel-table"><thead><tr>';
     headers.forEach((header, index) => {
         const hLower = (header || '').toLowerCase();
         const centrar = colsCentrar.some(c => hLower.includes(c));
         const clsAttr = centrar ? ' class="col-center"' : '';
+        const esOrdenable = colsOrdenables.includes(index);
+        
+        // Determinar ícono de orden
+        let sortIcon = '';
+        if (esOrdenable) {
+            if (estado.col === index) {
+                sortIcon = estado.asc ? ' ▲' : ' ▼';
+            } else {
+                sortIcon = ' ⇅';
+            }
+        }
+        
         // Solo mostrar filtro en las primeras 2 columnas (SKU, Nombre)
         if (index < 2) {
+            const sortBtn = esOrdenable ? `<span class="sort-btn" onclick="ordenarTablaVentas(${index})">${sortIcon}</span>` : '';
             html += `<th${clsAttr}>
                 <div class="header-cell">
-                    <span class="header-text">${header || 'Col ' + (index + 1)}</span>
+                    <span class="header-text">${header || 'Col ' + (index + 1)}${sortBtn}</span>
                     <input type="text" class="column-filter" placeholder="Filtrar..." 
                            onkeyup="filtrarTabla('${containerId}', ${index}, this.value)">
                 </div>
             </th>`;
         } else {
-            html += `<th${clsAttr}><span class="header-text">${header || 'Col ' + (index + 1)}</span></th>`;
+            const sortBtn = esOrdenable ? `<span class="sort-btn" onclick="ordenarTablaVentas(${index})">${sortIcon}</span>` : '';
+            html += `<th${clsAttr}><span class="header-text">${header || 'Col ' + (index + 1)}${sortBtn}</span></th>`;
         }
     });
     html += '</tr></thead><tbody>';
