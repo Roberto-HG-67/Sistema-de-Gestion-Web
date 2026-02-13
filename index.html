@@ -5,6 +5,10 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ϟϟϟ</title>
     <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <!-- Librería para leer archivos Excel -->
     <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
     <!-- Librería para gráficos -->
@@ -13,11 +17,23 @@
     <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 </head>
 <body>
-    <div class="container">
+    <!-- Pantalla de carga mientras se verifica autenticación -->
+    <div id="auth-loading" class="auth-loading-screen">
+        <div class="auth-loading-content">
+            <h1>ϟϟϟ</h1>
+            <p>⏳ Verificando sesión...</p>
+        </div>
+    </div>
+
+    <div class="container" id="app-container" style="display: none;">
         <header>
+            <div class="header-top">
+                <button class="logout-btn" onclick="cerrarSesion()" title="Cerrar sesión">🚪 Salir</button>
+            </div>
             <h1>ϟϟϟ</h1>
             <p>Sistema integrado de gestión de inventario y análisis</p>
             <p class="credit">Creado por RAHG</p>
+            <p class="user-info" id="user-email"></p>
         </header>
 
         <!-- Navegación por pestañas -->
@@ -406,5 +422,30 @@
     </div>
 
     <script src="script.js"></script>
+    <script>
+        // === PROTECCIÓN DE AUTENTICACIÓN ===
+        firebase.auth().onAuthStateChanged(function(user) {
+            const loadingScreen = document.getElementById('auth-loading');
+            const appContainer = document.getElementById('app-container');
+
+            if (user) {
+                // Usuario autenticado - mostrar la app
+                loadingScreen.style.display = 'none';
+                appContainer.style.display = 'block';
+                document.getElementById('user-email').textContent = '👤 ' + user.email;
+            } else {
+                // No autenticado - redirigir al login
+                window.location.href = 'login.html';
+            }
+        });
+
+        function cerrarSesion() {
+            if (confirm('¿Seguro que deseas cerrar sesión?')) {
+                firebase.auth().signOut().then(function() {
+                    window.location.href = 'login.html';
+                });
+            }
+        }
+    </script>
 </body>
 </html>

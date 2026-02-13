@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ϟϟϟ - Iniciar Sesión</title>
+    <link rel="stylesheet" href="styles.css">
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <h1>ϟϟϟ</h1>
+                <p>Sistema de Gestión</p>
+            </div>
+
+            <form id="loginForm" class="login-form">
+                <div class="form-group">
+                    <label for="email">📧 Correo electrónico</label>
+                    <input type="email" id="email" placeholder="tu@correo.com" required autocomplete="email">
+                </div>
+
+                <div class="form-group">
+                    <label for="password">🔒 Contraseña</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="password" placeholder="Tu contraseña" required autocomplete="current-password">
+                        <button type="button" class="toggle-password" onclick="togglePassword()">👁️</button>
+                    </div>
+                </div>
+
+                <div id="login-error" class="login-error" style="display: none;"></div>
+
+                <button type="submit" class="login-btn" id="loginBtn">
+                    🔑 Iniciar Sesión
+                </button>
+            </form>
+
+            <div id="login-loading" class="login-loading" style="display: none;">
+                ⏳ Verificando credenciales...
+            </div>
+
+            <button class="forgot-password-btn" onclick="resetPassword()">
+                ¿Olvidaste tu contraseña?
+            </button>
+
+            <p class="login-footer">Creado por RAHG</p>
+        </div>
+    </div>
+
+    <script src="firebase-config.js"></script>
+    <script>
+        // Verificar si ya está autenticado
+        firebase.auth().onAuthStateChanged(function(user) {
+            if (user) {
+                window.location.href = 'index.html';
+            }
+        });
+
+        // Toggle mostrar/ocultar contraseña
+        function togglePassword() {
+            const input = document.getElementById('password');
+            input.type = input.type === 'password' ? 'text' : 'password';
+        }
+
+        // Manejar login
+        document.getElementById('loginForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const email = document.getElementById('email').value.trim();
+            const password = document.getElementById('password').value;
+            const errorDiv = document.getElementById('login-error');
+            const loadingDiv = document.getElementById('login-loading');
+            const loginBtn = document.getElementById('loginBtn');
+
+            errorDiv.style.display = 'none';
+            loadingDiv.style.display = 'block';
+            loginBtn.disabled = true;
+
+            try {
+                await firebase.auth().signInWithEmailAndPassword(email, password);
+                window.location.href = 'index.html';
+            } catch (error) {
+                loadingDiv.style.display = 'none';
+                loginBtn.disabled = false;
+                errorDiv.style.display = 'block';
+                
+                switch (error.code) {
+                    case 'auth/user-not-found':
+                        errorDiv.textContent = '❌ No existe una cuenta con este correo';
+                        break;
+                    case 'auth/wrong-password':
+                        errorDiv.textContent = '❌ Contraseña incorrecta';
+                        break;
+                    case 'auth/invalid-email':
+                        errorDiv.textContent = '❌ Correo electrónico no válido';
+                        break;
+                    case 'auth/too-many-requests':
+                        errorDiv.textContent = '⚠️ Demasiados intentos. Espera unos minutos';
+                        break;
+                    case 'auth/invalid-credential':
+                        errorDiv.textContent = '❌ Credenciales incorrectas. Verifica tu correo y contraseña';
+                        break;
+                    default:
+                        errorDiv.textContent = '❌ Error: ' + error.message;
+                }
+            }
+        });
+
+        // Recuperar contraseña
+        async function resetPassword() {
+            const email = document.getElementById('email').value.trim();
+            const errorDiv = document.getElementById('login-error');
+
+            if (!email) {
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = '📧 Escribe tu correo arriba y luego haz clic en "¿Olvidaste tu contraseña?"';
+                errorDiv.style.background = '#fef3c7';
+                errorDiv.style.color = '#92400e';
+                errorDiv.style.borderColor = '#f59e0b';
+                return;
+            }
+
+            try {
+                await firebase.auth().sendPasswordResetEmail(email);
+                errorDiv.style.display = 'block';
+                errorDiv.textContent = '✅ Se envió un correo para restablecer tu contraseña. Revisa tu bandeja de entrada.';
+                errorDiv.style.background = '#d1fae5';
+                errorDiv.style.color = '#065f46';
+                errorDiv.style.borderColor = '#10b981';
+            } catch (error) {
+                errorDiv.style.display = 'block';
+                errorDiv.style.background = '#fee2e2';
+                errorDiv.style.color = '#991b1b';
+                errorDiv.style.borderColor = '#ef4444';
+                errorDiv.textContent = '❌ No se pudo enviar el correo: ' + error.message;
+            }
+        }
+
+        // Enter para enviar
+        document.getElementById('password').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                document.getElementById('loginForm').dispatchEvent(new Event('submit'));
+            }
+        });
+    </script>
+</body>
+</html>
