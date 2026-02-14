@@ -3744,9 +3744,12 @@ function procesarSKUporVencer() {
         const fila = datosStockValorizado[i];
         if (!fila || fila.length === 0) continue;
 
-        // Filtrar: Bloqueado = Falso
-        const bloqueado = iBloqueado >= 0 ? String(fila[iBloqueado] || '').trim().toLowerCase() : '';
-        if (bloqueado !== 'falso' && bloqueado !== 'false' && bloqueado !== 'no' && bloqueado !== '0') continue;
+        // Filtrar: Bloqueado = Falso (el valor puede ser boolean false o string)
+        const rawBloq = iBloqueado >= 0 ? fila[iBloqueado] : '';
+        // Manejar boolean directamente (SheetJS puede devolver boolean false)
+        if (rawBloq === true) continue;
+        const bloqueado = String(rawBloq == null ? '' : rawBloq).trim().toLowerCase();
+        if (bloqueado === 'verdadero' || bloqueado === 'true' || bloqueado === 'si' || bloqueado === 'sí' || bloqueado === '1') continue;
 
         const fechaVenc = parseFecha(iFechaVenc >= 0 ? fila[iFechaVenc] : null);
 
