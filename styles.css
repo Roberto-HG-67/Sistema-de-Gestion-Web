@@ -61,7 +61,7 @@ body::after {
     background: #f0f4f8;
     border-radius: 15px;
     box-shadow: 0 0 40px rgba(14, 165, 233, 0.15), 0 10px 40px rgba(0, 0, 0, 0.4);
-    padding: 30px;
+    padding: 10px 30px 30px 30px;
     position: relative;
     z-index: 1;
 }
@@ -1704,7 +1704,7 @@ button:active {
 .header-top {
     display: flex;
     justify-content: flex-end;
-    margin-bottom: 2px;
+    margin-bottom: 0;
 }
 
 .logout-btn {
@@ -2084,8 +2084,11 @@ button:active {
     flex: 1 1 320px;
     background: rgba(30, 41, 59, 0.5);
     border-radius: 10px;
-    padding: 12px;
-    min-height: 280px;
+    padding: 16px;
+    min-height: 360px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 .inv-chart-box-full {
     width: 100%;

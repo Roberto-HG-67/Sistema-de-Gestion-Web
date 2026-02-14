@@ -3396,7 +3396,7 @@ function renderChartABC_pareto(productos) {
             },
             scales: {
                 x: { ticks: { color: '#aaa', maxRotation: 90, font: { size: 9 } }, grid: { color: 'rgba(255,255,255,0.05)' } },
-                y: { position: 'left', ticks: { color: '#aaa', callback: v => '$' + (v / 1000).toFixed(0) + 'k' }, grid: { color: 'rgba(255,255,255,0.08)' }, title: { display: true, text: 'Valor ($)', color: '#aaa' } },
+                y: { position: 'left', ticks: { color: '#aaa', callback: v => '$' + Math.round(v).toLocaleString('es-CL') }, grid: { color: 'rgba(255,255,255,0.08)' }, title: { display: true, text: 'Valor ($)', color: '#aaa' } },
                 y1: { position: 'right', min: 0, max: 100, ticks: { color: '#00bcd4', callback: v => v + '%' }, grid: { drawOnChartArea: false }, title: { display: true, text: '% Acumulado', color: '#00bcd4' } }
             }
         }
