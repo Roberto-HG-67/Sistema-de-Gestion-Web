@@ -42,6 +42,8 @@ function cambiarVentana(ventanaId) {
         inicializarControlEntradas();
     } else if (ventanaId === 'analisis-inventario') {
         cargarAnalisisInventario();
+    } else if (ventanaId === 'sku-por-vencer') {
+        cargarSKUporVencer();
     }
 }
 
@@ -3658,4 +3660,198 @@ function exportarRotacion() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Rotación Inventario');
     XLSX.writeFile(wb, 'Rotacion_Inventario.xlsx');
+}
+
+// ===== VENTANA SKU POR VENCER =====
+let datosStockValorizado = [];
+window._datosVencer = [];
+
+async function cargarSKUporVencer() {
+    const loading = document.getElementById('loading-vencer');
+    const errorEl = document.getElementById('error-vencer');
+    loading.style.display = 'block';
+    errorEl.style.display = 'none';
+
+    try {
+        if (datosStockValorizado.length === 0) {
+            const resp = await fetch('Excel/Stock Valorizado.xlsx');
+            if (!resp.ok) throw new Error('No se pudo cargar Excel/Stock Valorizado.xlsx');
+            const buf = await resp.arrayBuffer();
+            const wb = XLSX.read(buf, { type: 'array' });
+            datosStockValorizado = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header: 1 });
+        }
+
+        // Setear fecha límite a 3 meses en el futuro por defecto
+        const inputFecha = document.getElementById('vencerFechaLimite');
+        if (!inputFecha.value) {
+            const hoy = new Date();
+            hoy.setMonth(hoy.getMonth() + 3);
+            inputFecha.value = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+        }
+
+        procesarSKUporVencer();
+        loading.style.display = 'none';
+    } catch (err) {
+        loading.style.display = 'none';
+        errorEl.style.display = 'block';
+        errorEl.textContent = '❌ Error: ' + err.message;
+        console.error('Error en SKU por Vencer:', err);
+    }
+}
+
+function aplicarFiltroVencer() {
+    procesarSKUporVencer();
+}
+
+function procesarSKUporVencer() {
+    if (datosStockValorizado.length === 0) return;
+
+    const headers = datosStockValorizado[0];
+    // Buscar índices de columnas
+    const iIDProducto = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '') === 'idproducto');
+    const iProducto = headers.findIndex(h => h && h.toString().toLowerCase() === 'producto');
+    const iNumLote = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '').includes('numerodelote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'numerolote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'numlote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'nºlote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'nlote'));
+    const iFechaVenc = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '').includes('fechavencimiento'));
+    const iBloqueado = headers.findIndex(h => h && h.toString().toLowerCase() === 'bloqueado');
+
+    console.log('Stock Valorizado headers:', headers);
+    console.log('Indices -> IDProducto:', iIDProducto, 'Producto:', iProducto, 'NumLote:', iNumLote, 'FechaVenc:', iFechaVenc, 'Bloqueado:', iBloqueado);
+
+    const EXCEL_EPOCH = new Date('1899-12-30').getTime();
+    function excelSerialToDate(serial) {
+        const num = Number(serial);
+        if (isNaN(num) || num <= 0) return null;
+        return new Date(EXCEL_EPOCH + num * 86400000);
+    }
+
+    function parseFecha(val) {
+        if (!val) return null;
+        if (typeof val === 'number') return excelSerialToDate(val);
+        if (val instanceof Date) return val;
+        if (typeof val === 'string') {
+            const d = new Date(val);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        return null;
+    }
+
+    // Leer fecha límite
+    const fechaLimiteStr = document.getElementById('vencerFechaLimite').value;
+    const fechaLimite = fechaLimiteStr ? new Date(fechaLimiteStr + 'T23:59:59') : null;
+
+    const productos = [];
+    for (let i = 1; i < datosStockValorizado.length; i++) {
+        const fila = datosStockValorizado[i];
+        if (!fila || fila.length === 0) continue;
+
+        // Filtrar: Bloqueado = Falso
+        const bloqueado = iBloqueado >= 0 ? String(fila[iBloqueado] || '').trim().toLowerCase() : '';
+        if (bloqueado !== 'falso' && bloqueado !== 'false' && bloqueado !== 'no' && bloqueado !== '0') continue;
+
+        const fechaVenc = parseFecha(iFechaVenc >= 0 ? fila[iFechaVenc] : null);
+
+        // Filtrar por fecha límite si está definida
+        if (fechaLimite && fechaVenc) {
+            if (fechaVenc > fechaLimite) continue;
+        }
+        // Si no hay fecha de vencimiento, no lo incluimos (no podemos saber si vence)
+        if (!fechaVenc) continue;
+
+        const sku = iIDProducto >= 0 ? String(fila[iIDProducto] || '').trim() : '';
+        const nombre = iProducto >= 0 ? String(fila[iProducto] || '').trim() : '';
+        const nLote = iNumLote >= 0 ? String(fila[iNumLote] || '').trim() : '';
+
+        // Calcular días restantes
+        const hoy = new Date();
+        hoy.setHours(0, 0, 0, 0);
+        const diasRestantes = Math.ceil((fechaVenc - hoy) / 86400000);
+
+        productos.push({
+            sku,
+            nombre,
+            nLote,
+            fechaVencimiento: fechaVenc,
+            fechaVencStr: fechaVenc.toLocaleDateString('es-CL'),
+            diasRestantes
+        });
+    }
+
+    // Ordenar por fecha de vencimiento ascendente (los más próximos primero)
+    productos.sort((a, b) => a.fechaVencimiento - b.fechaVencimiento);
+
+    window._datosVencer = productos;
+
+    // Resumen
+    const resumenEl = document.getElementById('vencer-resumen');
+    const countEl = document.getElementById('vencer-count');
+    const vencidos = productos.filter(p => p.diasRestantes <= 0).length;
+    const proximos30 = productos.filter(p => p.diasRestantes > 0 && p.diasRestantes <= 30).length;
+    countEl.innerHTML = '<strong>' + productos.length + '</strong> productos encontrados';
+    if (vencidos > 0) countEl.innerHTML += ' &nbsp;|&nbsp; <span style="color:#e74c3c;font-weight:700;">' + vencidos + ' ya vencidos</span>';
+    if (proximos30 > 0) countEl.innerHTML += ' &nbsp;|&nbsp; <span style="color:#f1c40f;font-weight:700;">' + proximos30 + ' vencen en 30 días</span>';
+    resumenEl.style.display = 'flex';
+
+    // Render tabla
+    renderTablaVencer(productos);
+}
+
+function renderTablaVencer(productos) {
+    const container = document.getElementById('tableContainer-vencer');
+    if (productos.length === 0) {
+        container.innerHTML = '<p style="color:#94a3b8;text-align:center;padding:20px;">No se encontraron productos que cumplan los filtros.</p>';
+        return;
+    }
+
+    let html = '<table class="tabla-datos tabla-vencer"><thead><tr>';
+    html += '<th>SKU</th><th>Nombre</th><th>N° Lote</th><th>Fecha Vencimiento</th><th>Días Restantes</th><th>Estado</th>';
+    html += '</tr></thead><tbody>';
+
+    productos.forEach(p => {
+        let estadoClass, estadoText;
+        if (p.diasRestantes <= 0) {
+            estadoClass = 'vencer-badge vencer-vencido';
+            estadoText = 'Vencido';
+        } else if (p.diasRestantes <= 30) {
+            estadoClass = 'vencer-badge vencer-critico';
+            estadoText = 'Crítico';
+        } else if (p.diasRestantes <= 90) {
+            estadoClass = 'vencer-badge vencer-proximo';
+            estadoText = 'Próximo';
+        } else {
+            estadoClass = 'vencer-badge vencer-ok';
+            estadoText = 'OK';
+        }
+
+        html += '<tr>';
+        html += '<td>' + p.sku + '</td>';
+        html += '<td>' + p.nombre + '</td>';
+        html += '<td style="text-align:center;">' + p.nLote + '</td>';
+        html += '<td style="text-align:center;">' + p.fechaVencStr + '</td>';
+        html += '<td style="text-align:center;font-weight:600;">' + p.diasRestantes + '</td>';
+        html += '<td style="text-align:center;"><span class="' + estadoClass + '">' + estadoText + '</span></td>';
+        html += '</tr>';
+    });
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function exportarSKUporVencer() {
+    const datos = window._datosVencer;
+    if (!datos || datos.length === 0) return alert('No hay datos para exportar.');
+    const filas = [['SKU', 'Nombre', 'N° Lote', 'Fecha Vencimiento', 'Días Restantes', 'Estado']];
+    datos.forEach(p => {
+        let estado;
+        if (p.diasRestantes <= 0) estado = 'Vencido';
+        else if (p.diasRestantes <= 30) estado = 'Crítico';
+        else if (p.diasRestantes <= 90) estado = 'Próximo';
+        else estado = 'OK';
+        filas.push([p.sku, p.nombre, p.nLote, p.fechaVencStr, p.diasRestantes, estado]);
+    });
+    const ws = XLSX.utils.aoa_to_sheet(filas);
+    // Ajustar anchos de columna
+    ws['!cols'] = [{ wch: 10 }, { wch: 35 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 10 }];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'SKU por Vencer');
+    XLSX.writeFile(wb, 'SKU_por_Vencer.xlsx');
 }

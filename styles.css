@@ -2269,3 +2269,39 @@ button:active {
         align-items: flex-start;
     }
 }
+
+/* ===== SKU POR VENCER ===== */
+.vencer-resumen {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 14px;
+    padding: 10px 16px;
+    background: rgba(15, 23, 42, 0.4);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 10px;
+}
+.vencer-count {
+    color: #cbd5e1;
+    font-size: 0.9em;
+}
+
+/* Badges de estado */
+.vencer-badge {
+    display: inline-block;
+    padding: 2px 10px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.8em;
+    letter-spacing: 0.3px;
+}
+.vencer-vencido { background: rgba(231, 76, 60, 0.2); color: #e74c3c; }
+.vencer-critico { background: rgba(241, 196, 15, 0.2); color: #f1c40f; }
+.vencer-proximo { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
+.vencer-ok { background: rgba(46, 204, 113, 0.18); color: #2ecc71; }
+
+/* Tabla vencer - centrar columnas numéricas */
+.tabla-vencer th:nth-child(n+3),
+.tabla-vencer td:nth-child(n+3) {
+    text-align: center;
+}

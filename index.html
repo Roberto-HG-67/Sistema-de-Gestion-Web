@@ -50,6 +50,7 @@
             <button class="tab-button" onclick="cambiarVentana('ingreso-productos')">Ingreso de Productos</button>
             <button class="tab-button" onclick="cambiarVentana('historial-precios')">Historial de Precios</button>
             <button class="tab-button" onclick="cambiarVentana('analisis-inventario')">Análisis de Inventario</button>
+            <button class="tab-button" onclick="cambiarVentana('sku-por-vencer')">SKU por Vencer</button>
         </div>
 
         <!-- Ventana SKU -->
@@ -526,6 +527,27 @@
 
             <div id="loading-inventario" class="loading" style="display: none;">&#9203; Cargando análisis de inventario...</div>
             <div id="error-inventario" class="error" style="display: none;"></div>
+        </div>
+
+        <!-- Ventana SKU por Vencer -->
+        <div id="sku-por-vencer" class="ventana">
+            <h2>&#9888;&#65039; SKU por Vencer</h2>
+            <p class="inv-desc">Productos no bloqueados cuya fecha de vencimiento se aproxima. Usa el filtro de fecha límite para identificar lotes que vencerán antes de esa fecha.</p>
+
+            <div class="inv-date-filter">
+                <label>Fecha límite: <input type="date" id="vencerFechaLimite"></label>
+                <button onclick="aplicarFiltroVencer()">&#128269; Filtrar</button>
+                <button class="btn-exportar-inv" onclick="exportarSKUporVencer()">&#128229; Exportar a Excel</button>
+            </div>
+
+            <div class="vencer-resumen" id="vencer-resumen" style="display:none;">
+                <span class="vencer-count" id="vencer-count">0 productos</span>
+            </div>
+
+            <div id="tableContainer-vencer" class="table-container"></div>
+
+            <div id="loading-vencer" class="loading" style="display: none;">&#9203; Cargando Stock Valorizado...</div>
+            <div id="error-vencer" class="error" style="display: none;"></div>
         </div>
     </div>
 
