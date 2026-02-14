@@ -3466,10 +3466,12 @@ function renderChartRotacion(productos, filtroRot) {
 }
 
 // ---- Tabla ABC ----
-function renderTablaABC(productos, filtroClase) {
-    const datos = filtroClase && filtroClase !== 'todas' ? productos.filter(p => p.claseABC === filtroClase) : productos;
+function renderTablaABC(productos, filtroClase, filtroSKU, filtroNombre) {
+    let datos = filtroClase && filtroClase !== 'todas' ? productos.filter(p => p.claseABC === filtroClase) : [...productos];
+    if (filtroSKU) { const q = filtroSKU.toLowerCase(); datos = datos.filter(p => p.sku.toString().toLowerCase().includes(q)); }
+    if (filtroNombre) { const q = filtroNombre.toLowerCase(); datos = datos.filter(p => p.nombre.toLowerCase().includes(q)); }
     const container = document.getElementById('tableContainer-abc');
-    let html = '<table class="tabla-datos"><thead><tr>';
+    let html = '<table class="tabla-datos tabla-inv-sticky"><thead><tr>';
     html += '<th>SKU</th><th>Nombre</th><th>Clase</th><th>Valor Ventas ($)</th><th>% del Total</th><th>% Acumulado</th><th>Cant. Vendida</th><th>Nro. Ventas</th>';
     html += '</tr></thead><tbody>';
     datos.forEach(p => {
@@ -3484,8 +3486,10 @@ function renderTablaABC(productos, filtroClase) {
 
 function filtrarTablaABC() {
     const filtro = document.getElementById('filtroClaseABC').value;
+    const filtroSKU = (document.getElementById('filtroSKU_ABC') || {}).value || '';
+    const filtroNombre = (document.getElementById('filtroNombre_ABC') || {}).value || '';
     const productos = window._datosABC;
-    renderTablaABC(productos, filtro);
+    renderTablaABC(productos, filtro, filtroSKU, filtroNombre);
     // Actualizar gráfico pie con la clase filtrada
     if (filtro && filtro !== 'todas') {
         const filtrados = productos.filter(p => p.claseABC === filtro);
@@ -3519,16 +3523,18 @@ function filtrarTablaABC() {
 }
 
 // ---- Tabla Rotación ----
-function renderTablaRotacion(productos, filtroRot) {
+function renderTablaRotacion(productos, filtroRot, filtroSKU, filtroNombre) {
     let datos = [...productos];
     if (filtroRot === 'alta') datos = datos.filter(p => p.indiceRotacion >= 12 && p.indiceRotacion < 999);
     else if (filtroRot === 'media') datos = datos.filter(p => p.indiceRotacion >= 4 && p.indiceRotacion < 12);
     else if (filtroRot === 'baja') datos = datos.filter(p => p.indiceRotacion >= 1 && p.indiceRotacion < 4);
     else if (filtroRot === 'muybaja') datos = datos.filter(p => p.indiceRotacion < 1);
+    if (filtroSKU) { const q = filtroSKU.toLowerCase(); datos = datos.filter(p => p.sku.toString().toLowerCase().includes(q)); }
+    if (filtroNombre) { const q = filtroNombre.toLowerCase(); datos = datos.filter(p => p.nombre.toLowerCase().includes(q)); }
     datos.sort((a, b) => b.indiceRotacion - a.indiceRotacion);
 
     const container = document.getElementById('tableContainer-rotacion');
-    let html = '<table class="tabla-datos"><thead><tr>';
+    let html = '<table class="tabla-datos tabla-inv-sticky"><thead><tr>';
     html += '<th>SKU</th><th>Nombre</th><th>Clase ABC</th><th>Stock Actual</th><th>Cant. Vendida</th><th>Índ. Rotación</th><th>Días Inv.</th><th>Cobertura (sem)</th><th>Categoría</th>';
     html += '</tr></thead><tbody>';
     datos.forEach(p => {
@@ -3549,7 +3555,9 @@ function renderTablaRotacion(productos, filtroRot) {
 
 function filtrarTablaRotacion() {
     const filtro = document.getElementById('filtroRotacion').value;
-    renderTablaRotacion(window._datosRotacion, filtro);
+    const filtroSKU = (document.getElementById('filtroSKU_Rot') || {}).value || '';
+    const filtroNombre = (document.getElementById('filtroNombre_Rot') || {}).value || '';
+    renderTablaRotacion(window._datosRotacion, filtro, filtroSKU, filtroNombre);
     renderChartRotacion(window._datosRotacion, filtro);
 }
 

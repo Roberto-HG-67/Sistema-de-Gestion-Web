@@ -2300,8 +2300,46 @@ button:active {
 .vencer-proximo { background: rgba(230, 126, 34, 0.2); color: #e67e22; }
 .vencer-ok { background: rgba(46, 204, 113, 0.18); color: #2ecc71; }
 
-/* Tabla vencer - centrar columnas numéricas */
+/* Tabla vencer - centrar columnas numéricas y separar columnas */
 .tabla-vencer th:nth-child(n+3),
 .tabla-vencer td:nth-child(n+3) {
     text-align: center;
+}
+.tabla-vencer th,
+.tabla-vencer td {
+    padding: 8px 14px;
+}
+
+/* ===== STICKY HEADERS PARA TABLAS INVENTARIO ===== */
+.inv-table-scroll {
+    max-height: 500px;
+    overflow-y: auto;
+}
+.tabla-inv-sticky thead {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: linear-gradient(135deg, #0ea5e9 0%, #0369a1 100%);
+}
+.tabla-inv-sticky thead th {
+    background: inherit;
+}
+
+/* ===== TEXT FILTER INPUTS EN INVENTARIO ===== */
+.inv-filter-bar input[type="text"] {
+    background: #1e293b;
+    color: #e2e8f0;
+    border: 1px solid #334155;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-size: 0.85em;
+    width: 130px;
+}
+.inv-filter-bar input[type="text"]::placeholder {
+    color: #64748b;
+}
+.inv-filter-bar input[type="text"]:focus {
+    outline: none;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.2);
 }

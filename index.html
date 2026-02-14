@@ -43,14 +43,14 @@
             <button class="tab-button" onclick="cambiarVentana('stock-actual')">Stock Actual</button>
             <button class="tab-button" onclick="cambiarVentana('consumo')">Consumo</button>
             <button class="tab-button" onclick="cambiarVentana('analisis-ventas')">Análisis de Ventas</button>
+            <button class="tab-button" onclick="cambiarVentana('analisis-inventario')">Análisis de Inventario</button>
             <button class="tab-button" onclick="cambiarVentana('pronostico')">Pronóstico</button>
             <button class="tab-button" onclick="cambiarVentana('compras')">Compras</button>
             <button class="tab-button" onclick="cambiarVentana('control-entradas')">Control de Entradas</button>
+            <button class="tab-button" onclick="cambiarVentana('sku-por-vencer')">SKU por Vencer</button>
             <button class="tab-button" onclick="cambiarVentana('consolidado')">Consolidado</button>
             <button class="tab-button" onclick="cambiarVentana('ingreso-productos')">Ingreso de Productos</button>
             <button class="tab-button" onclick="cambiarVentana('historial-precios')">Historial de Precios</button>
-            <button class="tab-button" onclick="cambiarVentana('analisis-inventario')">Análisis de Inventario</button>
-            <button class="tab-button" onclick="cambiarVentana('sku-por-vencer')">SKU por Vencer</button>
         </div>
 
         <!-- Ventana SKU -->
@@ -180,6 +180,122 @@
             <div class="chart-container chart-ventas-container">
                 <canvas id="chartVentasTotal"></canvas>
             </div>
+        </div>
+
+        <!-- Ventana Análisis de Inventario -->
+        <div id="analisis-inventario" class="ventana">
+            <h2>&#128230; Análisis de Inventario</h2>
+
+            <!-- Filtro de fechas -->
+            <div class="inv-date-filter">
+                <label>Desde: <input type="date" id="invFechaInicio" value="2025-01-01"></label>
+                <label>Hasta: <input type="date" id="invFechaFin"></label>
+                <button onclick="aplicarFiltroFechaInventario()">&#128269; Aplicar filtro</button>
+            </div>
+
+            <!-- KPI Cards -->
+            <div class="inv-kpi-container" id="inv-kpi-container" style="display:none;">
+                <div class="inv-kpi-card">
+                    <div class="inv-kpi-label">Total SKUs</div>
+                    <div class="inv-kpi-value" id="kpi-total-skus">0</div>
+                </div>
+                <div class="inv-kpi-card kpi-a">
+                    <div class="inv-kpi-label">Clase A</div>
+                    <div class="inv-kpi-value" id="kpi-clase-a">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-a-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card kpi-b">
+                    <div class="inv-kpi-label">Clase B</div>
+                    <div class="inv-kpi-value" id="kpi-clase-b">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-b-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card kpi-c">
+                    <div class="inv-kpi-label">Clase C</div>
+                    <div class="inv-kpi-value" id="kpi-clase-c">0</div>
+                    <div class="inv-kpi-detail" id="kpi-clase-c-pct">0% del valor</div>
+                </div>
+                <div class="inv-kpi-card">
+                    <div class="inv-kpi-label">Valor Total Ventas</div>
+                    <div class="inv-kpi-value" id="kpi-valor-total">$0</div>
+                </div>
+            </div>
+
+            <!-- Sección ABC -->
+            <div class="inv-section">
+                <h3>&#128202; Clasificación ABC</h3>
+                <p class="inv-desc">Clasificación basada en el principio de Pareto (80/15/5): los productos Clase A representan el 80% del valor de ventas, Clase B el siguiente 15%, y Clase C el 5% restante.</p>
+                <div class="inv-chart-row">
+                    <div class="inv-chart-box">
+                        <canvas id="chartABC_pie"></canvas>
+                    </div>
+                    <div class="inv-chart-box">
+                        <canvas id="chartABC_pareto"></canvas>
+                    </div>
+                </div>
+                <div class="inv-filter-bar">
+                    <label>Filtrar clase:
+                        <select id="filtroClaseABC" onchange="filtrarTablaABC()">
+                            <option value="todas">Todas</option>
+                            <option value="A">Clase A</option>
+                            <option value="B">Clase B</option>
+                            <option value="C">Clase C</option>
+                        </select>
+                    </label>
+                    <label>Buscar SKU:
+                        <input type="text" id="filtroSKU_ABC" placeholder="SKU..." oninput="filtrarTablaABC()">
+                    </label>
+                    <label>Buscar Nombre:
+                        <input type="text" id="filtroNombre_ABC" placeholder="Nombre..." oninput="filtrarTablaABC()">
+                    </label>
+                    <button class="btn-exportar-inv" onclick="exportarABC()">&#128229; Exportar ABC a Excel</button>
+                </div>
+                <div id="tableContainer-abc" class="table-container inv-table-scroll"></div>
+            </div>
+
+            <!-- Sección Rotación -->
+            <div class="inv-section">
+                <h3>&#128260; Análisis de Rotación de Inventario</h3>
+                <p class="inv-desc">Indicadores de rotación: Índice de Rotación (ventas / stock), Días de Inventario (stock / consumo diario), y Cobertura en semanas. Productos con alta rotación requieren reposición frecuente; baja rotación indica sobrestock o baja demanda.</p>
+                <div class="inv-chart-row">
+                    <div class="inv-chart-box-full">
+                        <canvas id="chartRotacion"></canvas>
+                    </div>
+                </div>
+                <div class="inv-filter-bar">
+                    <label>Filtrar rotación:
+                        <select id="filtroRotacion" onchange="filtrarTablaRotacion()">
+                            <option value="todas">Todas</option>
+                            <option value="alta">Alta Rotación (>12)</option>
+                            <option value="media">Media Rotación (4-12)</option>
+                            <option value="baja">Baja Rotación (1-4)</option>
+                            <option value="muybaja">Muy Baja / Sin Rotación (&lt;1)</option>
+                        </select>
+                    </label>
+                    <label>Buscar SKU:
+                        <input type="text" id="filtroSKU_Rot" placeholder="SKU..." oninput="filtrarTablaRotacion()">
+                    </label>
+                    <label>Buscar Nombre:
+                        <input type="text" id="filtroNombre_Rot" placeholder="Nombre..." oninput="filtrarTablaRotacion()">
+                    </label>
+                    <button class="btn-exportar-inv" onclick="exportarRotacion()">&#128229; Exportar Rotación a Excel</button>
+                </div>
+                <div id="tableContainer-rotacion" class="table-container inv-table-scroll"></div>
+            </div>
+
+            <!-- Conclusiones -->
+            <div class="inv-insight-box conclusiones" id="inv-conclusiones" style="display:none;">
+                <h3>&#128161; Conclusiones Importantes</h3>
+                <ul id="inv-conclusiones-lista"></ul>
+            </div>
+
+            <!-- Mejoras -->
+            <div class="inv-insight-box mejoras" id="inv-mejoras" style="display:none;">
+                <h3>&#128640; Mejoras Propuestas</h3>
+                <ul id="inv-mejoras-lista"></ul>
+            </div>
+
+            <div id="loading-inventario" class="loading" style="display: none;">&#9203; Cargando análisis de inventario...</div>
+            <div id="error-inventario" class="error" style="display: none;"></div>
         </div>
 
         <!-- Ventana Pronóstico -->
@@ -321,6 +437,28 @@
                 </div>
             </div>
         </div>
+
+        <!-- Ventana SKU por Vencer -->
+        <div id="sku-por-vencer" class="ventana">
+            <h2>&#9888;&#65039; SKU por Vencer</h2>
+            <p class="inv-desc">Productos no bloqueados cuya fecha de vencimiento se aproxima. Usa el filtro de fecha límite para identificar lotes que vencerán antes de esa fecha.</p>
+
+            <div class="inv-date-filter">
+                <label>Fecha límite: <input type="date" id="vencerFechaLimite"></label>
+                <button onclick="aplicarFiltroVencer()">&#128269; Filtrar</button>
+                <button class="btn-exportar-inv" onclick="exportarSKUporVencer()">&#128229; Exportar a Excel</button>
+            </div>
+
+            <div class="vencer-resumen" id="vencer-resumen" style="display:none;">
+                <span class="vencer-count" id="vencer-count">0 productos</span>
+            </div>
+
+            <div id="tableContainer-vencer" class="table-container"></div>
+
+            <div id="loading-vencer" class="loading" style="display: none;">&#9203; Cargando Stock Valorizado...</div>
+            <div id="error-vencer" class="error" style="display: none;"></div>
+        </div>
+
         <div id="ingreso-productos" class="ventana">
             <h2>✍️ Ingreso de Productos</h2>
             
@@ -425,130 +563,6 @@
             <div id="tableContainer-historial" class="table-container"></div>
         </div>
 
-        <!-- Ventana Análisis de Inventario -->
-        <div id="analisis-inventario" class="ventana">
-            <h2>&#128230; Análisis de Inventario</h2>
-
-            <!-- Filtro de fechas -->
-            <div class="inv-date-filter">
-                <label>Desde: <input type="date" id="invFechaInicio" value="2025-01-01"></label>
-                <label>Hasta: <input type="date" id="invFechaFin"></label>
-                <button onclick="aplicarFiltroFechaInventario()">&#128269; Aplicar filtro</button>
-            </div>
-
-            <!-- KPI Cards -->
-            <div class="inv-kpi-container" id="inv-kpi-container" style="display:none;">
-                <div class="inv-kpi-card">
-                    <div class="inv-kpi-label">Total SKUs</div>
-                    <div class="inv-kpi-value" id="kpi-total-skus">0</div>
-                </div>
-                <div class="inv-kpi-card kpi-a">
-                    <div class="inv-kpi-label">Clase A</div>
-                    <div class="inv-kpi-value" id="kpi-clase-a">0</div>
-                    <div class="inv-kpi-detail" id="kpi-clase-a-pct">0% del valor</div>
-                </div>
-                <div class="inv-kpi-card kpi-b">
-                    <div class="inv-kpi-label">Clase B</div>
-                    <div class="inv-kpi-value" id="kpi-clase-b">0</div>
-                    <div class="inv-kpi-detail" id="kpi-clase-b-pct">0% del valor</div>
-                </div>
-                <div class="inv-kpi-card kpi-c">
-                    <div class="inv-kpi-label">Clase C</div>
-                    <div class="inv-kpi-value" id="kpi-clase-c">0</div>
-                    <div class="inv-kpi-detail" id="kpi-clase-c-pct">0% del valor</div>
-                </div>
-                <div class="inv-kpi-card">
-                    <div class="inv-kpi-label">Valor Total Ventas</div>
-                    <div class="inv-kpi-value" id="kpi-valor-total">$0</div>
-                </div>
-            </div>
-
-            <!-- Sección ABC -->
-            <div class="inv-section">
-                <h3>&#128202; Clasificación ABC</h3>
-                <p class="inv-desc">Clasificación basada en el principio de Pareto (80/15/5): los productos Clase A representan el 80% del valor de ventas, Clase B el siguiente 15%, y Clase C el 5% restante.</p>
-                <div class="inv-chart-row">
-                    <div class="inv-chart-box">
-                        <canvas id="chartABC_pie"></canvas>
-                    </div>
-                    <div class="inv-chart-box">
-                        <canvas id="chartABC_pareto"></canvas>
-                    </div>
-                </div>
-                <div class="inv-filter-bar">
-                    <label>Filtrar clase:
-                        <select id="filtroClaseABC" onchange="filtrarTablaABC()">
-                            <option value="todas">Todas</option>
-                            <option value="A">Clase A</option>
-                            <option value="B">Clase B</option>
-                            <option value="C">Clase C</option>
-                        </select>
-                    </label>
-                    <button class="btn-exportar-inv" onclick="exportarABC()">&#128229; Exportar ABC a Excel</button>
-                </div>
-                <div id="tableContainer-abc" class="table-container"></div>
-            </div>
-
-            <!-- Sección Rotación -->
-            <div class="inv-section">
-                <h3>&#128260; Análisis de Rotación de Inventario</h3>
-                <p class="inv-desc">Indicadores de rotación: Índice de Rotación (ventas / stock), Días de Inventario (stock / consumo diario), y Cobertura en semanas. Productos con alta rotación requieren reposición frecuente; baja rotación indica sobrestock o baja demanda.</p>
-                <div class="inv-chart-row">
-                    <div class="inv-chart-box-full">
-                        <canvas id="chartRotacion"></canvas>
-                    </div>
-                </div>
-                <div class="inv-filter-bar">
-                    <label>Filtrar rotación:
-                        <select id="filtroRotacion" onchange="filtrarTablaRotacion()">
-                            <option value="todas">Todas</option>
-                            <option value="alta">Alta Rotación (>12)</option>
-                            <option value="media">Media Rotación (4-12)</option>
-                            <option value="baja">Baja Rotación (1-4)</option>
-                            <option value="muybaja">Muy Baja / Sin Rotación (<1)</option>
-                        </select>
-                    </label>
-                    <button class="btn-exportar-inv" onclick="exportarRotacion()">&#128229; Exportar Rotación a Excel</button>
-                </div>
-                <div id="tableContainer-rotacion" class="table-container"></div>
-            </div>
-
-            <!-- Conclusiones -->
-            <div class="inv-insight-box conclusiones" id="inv-conclusiones" style="display:none;">
-                <h3>&#128161; Conclusiones Importantes</h3>
-                <ul id="inv-conclusiones-lista"></ul>
-            </div>
-
-            <!-- Mejoras -->
-            <div class="inv-insight-box mejoras" id="inv-mejoras" style="display:none;">
-                <h3>&#128640; Mejoras Propuestas</h3>
-                <ul id="inv-mejoras-lista"></ul>
-            </div>
-
-            <div id="loading-inventario" class="loading" style="display: none;">&#9203; Cargando análisis de inventario...</div>
-            <div id="error-inventario" class="error" style="display: none;"></div>
-        </div>
-
-        <!-- Ventana SKU por Vencer -->
-        <div id="sku-por-vencer" class="ventana">
-            <h2>&#9888;&#65039; SKU por Vencer</h2>
-            <p class="inv-desc">Productos no bloqueados cuya fecha de vencimiento se aproxima. Usa el filtro de fecha límite para identificar lotes que vencerán antes de esa fecha.</p>
-
-            <div class="inv-date-filter">
-                <label>Fecha límite: <input type="date" id="vencerFechaLimite"></label>
-                <button onclick="aplicarFiltroVencer()">&#128269; Filtrar</button>
-                <button class="btn-exportar-inv" onclick="exportarSKUporVencer()">&#128229; Exportar a Excel</button>
-            </div>
-
-            <div class="vencer-resumen" id="vencer-resumen" style="display:none;">
-                <span class="vencer-count" id="vencer-count">0 productos</span>
-            </div>
-
-            <div id="tableContainer-vencer" class="table-container"></div>
-
-            <div id="loading-vencer" class="loading" style="display: none;">&#9203; Cargando Stock Valorizado...</div>
-            <div id="error-vencer" class="error" style="display: none;"></div>
-        </div>
     </div>
 
     <script src="script.js"></script>
