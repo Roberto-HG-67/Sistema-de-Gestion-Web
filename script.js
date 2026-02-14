@@ -974,18 +974,17 @@ function mostrarTablaVentasSinFiltrosNumericos(datos, containerId) {
         }
         
         // Solo mostrar filtro en las primeras 2 columnas (SKU, Nombre)
+        const sortBtn = esOrdenable ? `<span class="sort-btn" onclick="ordenarTablaVentas(${index})" title="Ordenar">${sortIcon}</span>` : '';
         if (index < 2) {
-            const sortBtn = esOrdenable ? ` <span class="sort-btn" onclick="ordenarTablaVentas(${index})" title="Ordenar">${sortIcon}</span>` : '';
             html += `<th${clsAttr}>
                 <div class="header-cell">
-                    <span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}
+                    <div class="header-title-row"><span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}</div>
                     <input type="text" class="column-filter" placeholder="Filtrar..." 
                            onkeyup="filtrarTabla('${containerId}', ${index}, this.value)">
                 </div>
             </th>`;
         } else {
-            const sortBtn = esOrdenable ? ` <span class="sort-btn" onclick="ordenarTablaVentas(${index})" title="Ordenar">${sortIcon}</span>` : '';
-            html += `<th${clsAttr}><span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}</th>`;
+            html += `<th${clsAttr}><div class="header-title-row"><span class="header-text">${header || 'Col ' + (index + 1)}</span>${sortBtn}</div></th>`;
         }
     });
     html += '</tr></thead><tbody>';
@@ -2844,6 +2843,65 @@ function marcarEntradaEstado(id, estado) {
     }
 }
 
+function buscarProductoEnEntradas() {
+    const query = (document.getElementById('buscarProductoEntrada').value || '').trim().toLowerCase();
+    const resultadoEl = document.getElementById('resultado-busqueda-entrada');
+
+    if (!query || query.length < 2) {
+        resultadoEl.style.display = 'none';
+        resultadoEl.innerHTML = '';
+        return;
+    }
+
+    // Buscar en entradas agendadas
+    const encontradas = entradasData.filter(e =>
+        e.sku.toLowerCase().includes(query) || e.producto.toLowerCase().includes(query)
+    );
+
+    // Agrupar por SKU+Producto
+    const agrupado = {};
+    encontradas.forEach(e => {
+        const key = e.sku + '|' + e.producto;
+        if (!agrupado[key]) agrupado[key] = [];
+        agrupado[key].push(e);
+    });
+
+    if (Object.keys(agrupado).length === 0) {
+        resultadoEl.style.display = 'block';
+        resultadoEl.innerHTML = '<div class="busqueda-sin-resultado">❌ No se encontraron entregas agendadas para "<strong>' + query + '</strong>"</div>';
+        return;
+    }
+
+    let html = '';
+    const diasSemana = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    Object.keys(agrupado).forEach(key => {
+        const entradas = agrupado[key];
+        const [sku, producto] = key.split('|');
+        html += '<div class="busqueda-producto-grupo">';
+        html += '<div class="busqueda-producto-titulo"><span class="busqueda-sku">' + sku + '</span> ' + producto + '</div>';
+        // Ordenar por fecha
+        entradas.sort((a, b) => a.fecha.localeCompare(b.fecha));
+        entradas.forEach(e => {
+            const fecha = new Date(e.fecha + 'T12:00:00');
+            const diaSem = diasSemana[fecha.getDay()];
+            const fechaStr = diaSem + ' ' + String(fecha.getDate()).padStart(2, '0') + '/' + String(fecha.getMonth() + 1).padStart(2, '0') + '/' + fecha.getFullYear();
+            const icono = e.estado === 'entregado' ? '✅' : e.estado === 'retrasado' ? '⚠️' : '⏳';
+            const estadoTxt = e.estado === 'entregado' ? 'Entregado' : e.estado === 'retrasado' ? 'Retrasado' : 'Pendiente';
+            const claseEstado = 'busqueda-estado-' + e.estado;
+            html += '<div class="busqueda-entrada-item">';
+            html += '<span class="busqueda-fecha">' + fechaStr + '</span>';
+            html += '<span class="busqueda-cantidad">× ' + e.cantidad + '</span>';
+            html += '<span class="busqueda-proveedor">' + e.proveedor + '</span>';
+            html += '<span class="' + claseEstado + '">' + icono + ' ' + estadoTxt + '</span>';
+            html += '</div>';
+        });
+        html += '</div>';
+    });
+
+    resultadoEl.style.display = 'block';
+    resultadoEl.innerHTML = html;
+}
+
 function abrirModalEntrada() {
     entradaEditandoId = null;
     document.getElementById('modal-entrada-titulo').textContent = 'Agendar Entrada';
@@ -3718,6 +3776,7 @@ function procesarSKUporVencer() {
     // Buscar índices de columnas
     const iIDProducto = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '') === 'idproducto');
     const iProducto = headers.findIndex(h => h && h.toString().toLowerCase() === 'producto');
+    const iCantidad = headers.findIndex(h => h && h.toString().toLowerCase() === 'cantidad');
     const iNumLote = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '').includes('numerodelote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'numerolote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'numlote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'nºlote') || (h && h.toString().toLowerCase().replace(/ /g, '') === 'nlote'));
     const iFechaVenc = headers.findIndex(h => h && h.toString().toLowerCase().replace(/ /g, '').includes('fechavencimiento'));
     const iBloqueado = headers.findIndex(h => h && h.toString().toLowerCase() === 'bloqueado');
@@ -3770,6 +3829,7 @@ function procesarSKUporVencer() {
 
         const sku = iIDProducto >= 0 ? String(fila[iIDProducto] || '').trim() : '';
         const nombre = iProducto >= 0 ? String(fila[iProducto] || '').trim() : '';
+        const cantidad = iCantidad >= 0 ? Number(fila[iCantidad]) || 0 : 0;
         const nLote = iNumLote >= 0 ? String(fila[iNumLote] || '').trim() : '';
 
         // Calcular días restantes
@@ -3780,6 +3840,7 @@ function procesarSKUporVencer() {
         productos.push({
             sku,
             nombre,
+            cantidad,
             nLote,
             fechaVencimiento: fechaVenc,
             fechaVencStr: fechaVenc.toLocaleDateString('es-CL'),
@@ -3814,7 +3875,7 @@ function renderTablaVencer(productos) {
     }
 
     let html = '<table class="tabla-datos tabla-vencer"><thead><tr>';
-    html += '<th>SKU</th><th>Nombre</th><th>N° Lote</th><th>Fecha Vencimiento</th><th>Días Restantes</th><th>Estado</th>';
+    html += '<th>SKU</th><th>Nombre</th><th>Cantidad</th><th>N° Lote</th><th>Fecha Vencimiento</th><th>Días Restantes</th><th>Estado</th>';
     html += '</tr></thead><tbody>';
 
     productos.forEach(p => {
@@ -3836,6 +3897,7 @@ function renderTablaVencer(productos) {
         html += '<tr>';
         html += '<td>' + p.sku + '</td>';
         html += '<td>' + p.nombre + '</td>';
+        html += '<td style="text-align:center;">' + p.cantidad.toLocaleString('es-CL') + '</td>';
         html += '<td style="text-align:center;">' + p.nLote + '</td>';
         html += '<td style="text-align:center;">' + p.fechaVencStr + '</td>';
         html += '<td style="text-align:center;font-weight:600;">' + p.diasRestantes + '</td>';
@@ -3850,18 +3912,18 @@ function renderTablaVencer(productos) {
 function exportarSKUporVencer() {
     const datos = window._datosVencer;
     if (!datos || datos.length === 0) return alert('No hay datos para exportar.');
-    const filas = [['SKU', 'Nombre', 'N° Lote', 'Fecha Vencimiento', 'Días Restantes', 'Estado']];
+    const filas = [['SKU', 'Nombre', 'Cantidad', 'N° Lote', 'Fecha Vencimiento', 'Días Restantes', 'Estado']];
     datos.forEach(p => {
         let estado;
         if (p.diasRestantes <= 0) estado = 'Vencido';
         else if (p.diasRestantes <= 30) estado = 'Crítico';
         else if (p.diasRestantes <= 90) estado = 'Próximo';
         else estado = 'OK';
-        filas.push([p.sku, p.nombre, p.nLote, p.fechaVencStr, p.diasRestantes, estado]);
+        filas.push([p.sku, p.nombre, p.cantidad, p.nLote, p.fechaVencStr, p.diasRestantes, estado]);
     });
     const ws = XLSX.utils.aoa_to_sheet(filas);
     // Ajustar anchos de columna
-    ws['!cols'] = [{ wch: 10 }, { wch: 35 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 10 }];
+    ws['!cols'] = [{ wch: 10 }, { wch: 35 }, { wch: 10 }, { wch: 15 }, { wch: 18 }, { wch: 15 }, { wch: 10 }];
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'SKU por Vencer');
     XLSX.writeFile(wb, 'SKU_por_Vencer.xlsx');

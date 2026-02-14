@@ -371,6 +371,10 @@
                 <button class="btn-agregar-entrada" onclick="abrirModalEntrada()">➕ Agendar Entrada</button>
                 <button class="btn-carga-masiva" onclick="abrirModalCargaMasiva()">📋 Carga Masiva</button>
             </div>
+            <div class="entradas-busqueda">
+                <input type="text" id="buscarProductoEntrada" placeholder="🔍 Buscar por SKU o nombre de producto..." oninput="buscarProductoEnEntradas()">
+                <div id="resultado-busqueda-entrada" class="resultado-busqueda-entrada" style="display:none;"></div>
+            </div>
             <div id="entradas-resumen" class="entradas-resumen"></div>
             <div id="entradas-contenido" class="entradas-contenido"></div>
 

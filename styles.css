@@ -265,6 +265,13 @@ button:active {
     gap: 5px;
 }
 
+.header-title-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
 .header-text {
     font-weight: 600;
     white-space: nowrap;
@@ -1246,6 +1253,99 @@ button:active {
 .badge-pendiente { background: #fff3cd; color: #856404; }
 .badge-entregado { background: #d4edda; color: #155724; }
 .badge-retrasado { background: #f8d7da; color: #721c24; }
+
+/* Buscador de productos en Control de Entradas */
+.entradas-busqueda {
+    margin-bottom: 15px;
+}
+.entradas-busqueda input[type="text"] {
+    width: 100%;
+    padding: 10px 14px;
+    font-size: 14px;
+    border: 2px solid #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #1e293b;
+    box-sizing: border-box;
+    transition: border-color 0.2s;
+}
+.entradas-busqueda input[type="text"]:focus {
+    outline: none;
+    border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+.entradas-busqueda input[type="text"]::placeholder {
+    color: #94a3b8;
+}
+.resultado-busqueda-entrada {
+    margin-top: 10px;
+    background: #f0f4f8;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px;
+    max-height: 350px;
+    overflow-y: auto;
+}
+.busqueda-sin-resultado {
+    color: #64748b;
+    text-align: center;
+    padding: 12px;
+    font-size: 14px;
+}
+.busqueda-producto-grupo {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #e2e8f0;
+}
+.busqueda-producto-grupo:last-child {
+    margin-bottom: 0;
+    padding-bottom: 0;
+    border-bottom: none;
+}
+.busqueda-producto-titulo {
+    font-weight: 700;
+    color: #0c2d6b;
+    margin-bottom: 6px;
+    font-size: 14px;
+}
+.busqueda-sku {
+    background: #e0f2fe;
+    color: #0369a1;
+    padding: 1px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin-right: 4px;
+}
+.busqueda-entrada-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #334155;
+}
+.busqueda-entrada-item:nth-child(even) {
+    background: rgba(14, 165, 233, 0.04);
+}
+.busqueda-fecha {
+    font-weight: 600;
+    min-width: 130px;
+    color: #1e293b;
+}
+.busqueda-cantidad {
+    font-weight: 600;
+    color: #0ea5e9;
+    min-width: 50px;
+}
+.busqueda-proveedor {
+    color: #64748b;
+    flex: 1;
+}
+.busqueda-estado-pendiente { color: #856404; font-weight: 600; }
+.busqueda-estado-entregado { color: #155724; font-weight: 600; }
+.busqueda-estado-retrasado { color: #b91c1c; font-weight: 600; }
 
 /* Grid semanal */
 .entradas-semana-grid {
