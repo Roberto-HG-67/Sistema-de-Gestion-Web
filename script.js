@@ -2356,10 +2356,10 @@ function descargarComprasTXT() {
 // --- Algoritmo Holt-Winters (Suavizado Exponencial Triple) ---
 function holtWinters(series, seasonLength, forecastPeriods, alpha, beta, gamma) {
     // Filtrar la serie: necesitamos al menos 2 temporadas completas
-    if (!series || series.length < seasonLength * 2) {
+    if (!series || series.length < seasonLength * 2 || seasonLength < 2) {
         // Fallback: devolver promedio simple si no hay datos suficientes
         const avg = series && series.length > 0 ? series.reduce((a, b) => a + b, 0) / series.length : 0;
-        return Array(forecastPeriods).fill(Math.round(avg));
+        return Array(forecastPeriods).fill(Math.max(0, Math.round(avg)));
     }
 
     const n = series.length;
@@ -2382,10 +2382,15 @@ function holtWinters(series, seasonLength, forecastPeriods, alpha, beta, gamma) 
     }
     T /= (seasonLength * seasonLength);
 
+    // Protección contra NaN/Infinity
+    if (!isFinite(L)) L = 0;
+    if (!isFinite(T)) T = 0;
+
     // Índices estacionales iniciales (método aditivo)
     const S = [];
     for (let i = 0; i < seasonLength; i++) {
-        S.push(series[i] - L);
+        const sVal = series[i] - L;
+        S.push(isFinite(sVal) ? sVal : 0);
     }
 
     // Arrays para almacenar los valores calculados
@@ -2402,11 +2407,16 @@ function holtWinters(series, seasonLength, forecastPeriods, alpha, beta, gamma) 
         const prevS = seasonals[sIdx];
 
         // Actualizar nivel
-        const newL = alpha * (y - prevS) + (1 - alpha) * (prevL + prevT);
+        let newL = alpha * (y - prevS) + (1 - alpha) * (prevL + prevT);
         // Actualizar tendencia
-        const newT = beta * (newL - prevL) + (1 - beta) * prevT;
+        let newT = beta * (newL - prevL) + (1 - beta) * prevT;
         // Actualizar estacionalidad
-        const newS = gamma * (y - newL) + (1 - gamma) * prevS;
+        let newS = gamma * (y - newL) + (1 - gamma) * prevS;
+
+        // Protección contra NaN/Infinity
+        if (!isFinite(newL)) newL = prevL;
+        if (!isFinite(newT)) newT = prevT;
+        if (!isFinite(newS)) newS = prevS;
 
         levels.push(newL);
         trends.push(newT);
@@ -2420,13 +2430,13 @@ function holtWinters(series, seasonLength, forecastPeriods, alpha, beta, gamma) 
     for (let h = 1; h <= forecastPeriods; h++) {
         const sIdx = (n + h - 1) % seasonLength;
         const forecast = lastL + h * lastT + seasonals[sIdx];
-        forecasts.push(Math.max(0, Math.round(forecast)));
+        forecasts.push(isFinite(forecast) ? Math.max(0, Math.round(forecast)) : 0);
     }
 
     return forecasts;
 }
 
-// Auto-optimizar parámetros Holt-Winters minimizando MAE
+// Optimizar parámetros Holt-Winters con búsqueda rápida
 function optimizarHoltWinters(series, seasonLength) {
     if (!series || series.length < seasonLength * 2) {
         return { alpha: 0.3, beta: 0.1, gamma: 0.3 };
@@ -2435,33 +2445,45 @@ function optimizarHoltWinters(series, seasonLength) {
     let mejorAlpha = 0.3, mejorBeta = 0.1, mejorGamma = 0.3;
     let mejorError = Infinity;
 
-    // Grid search con pasos de 0.1
-    for (let a = 0.1; a <= 0.9; a += 0.2) {
-        for (let b = 0.01; b <= 0.5; b += 0.1) {
-            for (let g = 0.1; g <= 0.9; g += 0.2) {
-                // Usar la primera mitad para entrenar, la segunda para validar
-                const trainLen = Math.floor(series.length * 0.7);
-                const train = series.slice(0, trainLen);
-                const test = series.slice(trainLen);
+    // Búsqueda rápida con combinaciones predefinidas (9 en vez de 125)
+    const candidatos = [
+        { a: 0.2, b: 0.05, g: 0.2 },
+        { a: 0.3, b: 0.1, g: 0.3 },
+        { a: 0.4, b: 0.1, g: 0.3 },
+        { a: 0.3, b: 0.1, g: 0.5 },
+        { a: 0.5, b: 0.1, g: 0.3 },
+        { a: 0.3, b: 0.2, g: 0.3 },
+        { a: 0.5, b: 0.1, g: 0.5 },
+        { a: 0.7, b: 0.1, g: 0.3 },
+        { a: 0.3, b: 0.05, g: 0.7 }
+    ];
 
-                if (train.length < seasonLength * 2) continue;
+    const trainLen = Math.floor(series.length * 0.7);
+    const train = series.slice(0, trainLen);
+    const test = series.slice(trainLen);
 
-                const preds = holtWinters(train, seasonLength, test.length, a, b, g);
-                
-                // Calcular MAE
-                let mae = 0;
-                for (let i = 0; i < test.length; i++) {
-                    mae += Math.abs(test[i] - preds[i]);
-                }
-                mae /= test.length;
+    if (train.length < seasonLength * 2) {
+        return { alpha: 0.3, beta: 0.1, gamma: 0.3 };
+    }
 
-                if (mae < mejorError) {
-                    mejorError = mae;
-                    mejorAlpha = a;
-                    mejorBeta = b;
-                    mejorGamma = g;
-                }
+    for (const c of candidatos) {
+        try {
+            const preds = holtWinters(train, seasonLength, test.length, c.a, c.b, c.g);
+            let mae = 0;
+            for (let i = 0; i < test.length; i++) {
+                mae += Math.abs(test[i] - (preds[i] || 0));
             }
+            mae /= test.length;
+
+            if (mae < mejorError && isFinite(mae)) {
+                mejorError = mae;
+                mejorAlpha = c.a;
+                mejorBeta = c.b;
+                mejorGamma = c.g;
+            }
+        } catch (e) {
+            // Si un candidato falla, probar el siguiente
+            continue;
         }
     }
 
@@ -2512,9 +2534,18 @@ async function cargarDatosComprasIA() {
     error.style.display = 'none';
 
     try {
-        if (datosSKU.length === 0) await cargarDatosSKU();
-        if (datosProveedores.length === 0) await cargarDatosProveedores();
+        console.log('[IA] Iniciando carga de datos...');
+
+        if (datosSKU.length === 0) {
+            console.log('[IA] Cargando SKU...');
+            await cargarDatosSKU();
+        }
+        if (datosProveedores.length === 0) {
+            console.log('[IA] Cargando Proveedores...');
+            await cargarDatosProveedores();
+        }
         if (datosStockActual.length === 0) {
+            console.log('[IA] Cargando Stock Actual...');
             const responseStock = await fetch('Excel/Stock Actual.xlsx');
             if (!responseStock.ok) throw new Error('No se pudo cargar Excel/Stock Actual.xlsx');
             const arrayBufferStock = await responseStock.arrayBuffer();
@@ -2522,6 +2553,7 @@ async function cargarDatosComprasIA() {
             datosStockActual = XLSX.utils.sheet_to_json(workbookStock.Sheets[workbookStock.SheetNames[0]], { header: 1 });
         }
         if (datosBBDD.length === 0) {
+            console.log('[IA] Cargando BBDD...');
             const response = await fetch('Excel/BBDD.xlsx');
             if (!response.ok) throw new Error('No se pudo cargar BBDD.xlsx');
             const arrayBuffer = await response.arrayBuffer();
@@ -2529,17 +2561,37 @@ async function cargarDatosComprasIA() {
             datosBBDD = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
         }
 
+        console.log('[IA] Datos cargados. SKU:', datosSKU.length, 'BBDD:', datosBBDD.length, 'Stock:', datosStockActual.length);
+
         // Calcular pronóstico original si no existe
         if (!window._datosPronosticoSemanal) {
+            console.log('[IA] Calculando pronóstico original...');
             actualizarPronostico();
+            console.log('[IA] Pronóstico original calculado:', window._datosPronosticoSemanal ? window._datosPronosticoSemanal.length + ' SKUs' : 'NO SE GENERÓ');
         }
 
-        actualizarComprasIA();
+        // Usar setTimeout para permitir que el navegador renderice el loading spinner
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        console.log('[IA] Iniciando cálculo Holt-Winters...');
+        await ejecutarCalculoHWAsync();
+
         loading.style.display = 'none';
+        console.log('[IA] Completado exitosamente.');
     } catch (err) {
         loading.style.display = 'none';
         error.style.display = 'block';
         error.textContent = '❌ Error al cargar Compras con IA: ' + err.message;
+        console.error('[IA] Error:', err);
+    }
+}
+
+async function ejecutarCalculoHWAsync() {
+    try {
+        actualizarComprasIA();
+    } catch (err) {
+        console.error('[IA] Error en actualizarComprasIA:', err);
+        throw err;
     }
 }
 
@@ -2597,6 +2649,17 @@ function actualizarComprasIA() {
 }
 
 function calcularPronosticoHW(anio) {
+    console.log('[HW] Iniciando cálculo para año', anio);
+    
+    if (!datosBBDD || datosBBDD.length < 2) {
+        console.error('[HW] datosBBDD vacío o inválido');
+        throw new Error('No hay datos en BBDD para calcular pronóstico');
+    }
+    if (!datosSKU || datosSKU.length < 2) {
+        console.error('[HW] datosSKU vacío o inválido');
+        throw new Error('No hay datos en SKU para calcular pronóstico');
+    }
+
     const headersBBDD = datosBBDD[0];
     const headersSKU = datosSKU[0];
 
@@ -2611,6 +2674,16 @@ function calcularPronosticoHW(anio) {
     let indexFechaEntero_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'fecha entero');
     if (indexFechaEntero_BBDD < 0) {
         indexFechaEntero_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
+    }
+
+    console.log('[HW] Índices BBDD - idProd:', indexIDProducto_BBDD, 'cantidad:', indexCantidad_BBDD, 'fecha:', indexFechaEntero_BBDD);
+    console.log('[HW] Índices SKU - sku:', indexSKU_SKU, 'nombre:', indexNombre_SKU);
+
+    if (indexIDProducto_BBDD < 0 || indexCantidad_BBDD < 0 || indexFechaEntero_BBDD < 0) {
+        throw new Error('No se encontraron las columnas necesarias en BBDD (idProducto, cantidad, fecha)');
+    }
+    if (indexSKU_SKU < 0) {
+        throw new Error('No se encontró la columna SKU en los datos de SKU');
     }
 
     const EXCEL_EPOCH = new Date('1899-12-30').getTime();
@@ -2637,35 +2710,36 @@ function calcularPronosticoHW(anio) {
         return rangos;
     }
 
-    // Rangos semanales para 3 años de historia (156 semanas) + año actual
+    // Usar 2 años de historia (104 semanas) para ser más rápido
     const rangosSemanales = [];
-    for (let a = anio - 3; a <= anio - 1; a++) {
+    for (let a = anio - 2; a <= anio - 1; a++) {
         rangosSemanales.push(...generarRangosSemanas(a));
     }
     const totalHistorico = rangosSemanales.length;
+    console.log('[HW] Total semanas históricas:', totalHistorico);
 
-    // Rangos del año actual para las 52 semanas a pronosticar
-    const rangosAnioActual = generarRangosSemanas(anio);
-
-    // Pre-convertir fechas de BBDD
-    const bbddConFechas = [];
+    // Pre-convertir fechas de BBDD y agrupar por producto (mapa para acceso O(1))
+    const mapaBBDD = {}; // { idProd: [{ cantidad, timestamp }] }
     for (let i = 1; i < datosBBDD.length; i++) {
         const filaBBDD = datosBBDD[i];
         const fechaEnteroVal = filaBBDD[indexFechaEntero_BBDD];
         if (!fechaEnteroVal) continue;
         const fechaObj = excelSerialToDate(fechaEnteroVal);
         if (!fechaObj) continue;
-        bbddConFechas.push({
-            idProd: String(filaBBDD[indexIDProducto_BBDD]).trim(),
+        const idProd = String(filaBBDD[indexIDProducto_BBDD]).trim();
+        if (!mapaBBDD[idProd]) mapaBBDD[idProd] = [];
+        mapaBBDD[idProd].push({
             cantidad: Number(filaBBDD[indexCantidad_BBDD]) || 0,
             timestamp: fechaObj.getTime()
         });
     }
+    console.log('[HW] Productos únicos en BBDD:', Object.keys(mapaBBDD).length);
 
     const datosHW = [];
     const filasSKU = datosSKU.slice(1);
     let totalConEstacionalidad = 0;
     let totalSKUs = 0;
+    let erroresSKU = 0;
 
     filasSKU.forEach(filaSKU => {
         const skuOrig = filaSKU[indexSKU_SKU];
@@ -2675,56 +2749,79 @@ function calcularPronosticoHW(anio) {
         const nombre = filaSKU[indexNombre_SKU] || '';
         totalSKUs++;
 
-        // Construir serie histórica semanal
-        const serieHistorica = new Array(totalHistorico).fill(0);
-        bbddConFechas.forEach(reg => {
-            if (reg.idProd !== skuStr && reg.idProd !== skuInt) return;
-            for (let p = 0; p < totalHistorico; p++) {
-                if (reg.timestamp >= rangosSemanales[p].inicio && reg.timestamp <= rangosSemanales[p].fin) {
-                    serieHistorica[p] += reg.cantidad;
-                    break;
+        try {
+            // Construir serie histórica semanal usando mapa O(1)
+            const serieHistorica = new Array(totalHistorico).fill(0);
+            const registros = mapaBBDD[skuStr] || mapaBBDD[skuInt] || [];
+            registros.forEach(reg => {
+                for (let p = 0; p < totalHistorico; p++) {
+                    if (reg.timestamp >= rangosSemanales[p].inicio && reg.timestamp <= rangosSemanales[p].fin) {
+                        serieHistorica[p] += reg.cantidad;
+                        break;
+                    }
                 }
+            });
+
+            // Filtrar serie para eliminar ceros iniciales consecutivos
+            let startIdx = 0;
+            while (startIdx < serieHistorica.length && serieHistorica[startIdx] === 0) startIdx++;
+            const serieRecortada = serieHistorica.slice(startIdx);
+
+            // Detectar estacionalidad (solo si hay datos suficientes)
+            let estacionalidad = { hayEstacionalidad: false, periodo: 0, fuerza: 0 };
+            if (serieRecortada.length >= 26) { // Al menos 6 meses de datos
+                estacionalidad = detectarEstacionalidad(serieRecortada, Math.min(52, Math.floor(serieRecortada.length / 2)));
             }
-        });
+            if (estacionalidad.hayEstacionalidad) totalConEstacionalidad++;
 
-        // Detectar estacionalidad
-        const estacionalidad = detectarEstacionalidad(serieHistorica, 52);
-        if (estacionalidad.hayEstacionalidad) totalConEstacionalidad++;
+            // Pronóstico Holt-Winters para 52 semanas
+            let pronosticoHW;
+            const seasonLen = estacionalidad.hayEstacionalidad ? estacionalidad.periodo : Math.min(52, Math.max(4, Math.floor(serieRecortada.length / 2)));
 
-        // Determinar longitud de temporada
-        const seasonLen = estacionalidad.hayEstacionalidad ? estacionalidad.periodo : 52;
-
-        // Filtrar serie para eliminar ceros iniciales consecutivos
-        let startIdx = 0;
-        while (startIdx < serieHistorica.length && serieHistorica[startIdx] === 0) startIdx++;
-        const serieRecortada = serieHistorica.slice(startIdx);
-
-        // Pronóstico Holt-Winters para 52 semanas
-        let pronosticoHW;
-        if (serieRecortada.length >= seasonLen * 2) {
-            const params = optimizarHoltWinters(serieRecortada, seasonLen);
-            pronosticoHW = holtWinters(serieRecortada, seasonLen, 52, params.alpha, params.beta, params.gamma);
-        } else if (serieRecortada.length >= 4) {
-            // Serie corta: usar suavizado exponencial simple
-            const alpha = 0.3;
-            let level = serieRecortada[0];
-            for (let i = 1; i < serieRecortada.length; i++) {
-                level = alpha * serieRecortada[i] + (1 - alpha) * level;
+            if (serieRecortada.length >= seasonLen * 2 && seasonLen >= 2) {
+                const params = optimizarHoltWinters(serieRecortada, seasonLen);
+                pronosticoHW = holtWinters(serieRecortada, seasonLen, 52, params.alpha, params.beta, params.gamma);
+            } else if (serieRecortada.length >= 4) {
+                // Serie corta: usar suavizado exponencial simple
+                const alpha = 0.3;
+                let level = serieRecortada[0];
+                for (let i = 1; i < serieRecortada.length; i++) {
+                    level = alpha * serieRecortada[i] + (1 - alpha) * level;
+                }
+                pronosticoHW = Array(52).fill(Math.max(0, Math.round(level)));
+            } else {
+                const avg = serieRecortada.length > 0 ? serieRecortada.reduce((a, b) => a + b, 0) / serieRecortada.length : 0;
+                pronosticoHW = Array(52).fill(Math.max(0, Math.round(avg)));
             }
-            pronosticoHW = Array(52).fill(Math.max(0, Math.round(level)));
-        } else {
-            const avg = serieRecortada.length > 0 ? serieRecortada.reduce((a, b) => a + b, 0) / serieRecortada.length : 0;
-            pronosticoHW = Array(52).fill(Math.max(0, Math.round(avg)));
+
+            // Verificar que pronosticoHW sea válido
+            if (!pronosticoHW || pronosticoHW.length !== 52) {
+                pronosticoHW = Array(52).fill(0);
+            }
+            // Limpiar NaN/Infinity
+            pronosticoHW = pronosticoHW.map(v => (isFinite(v) ? v : 0));
+
+            datosHW.push({
+                sku: skuOrig,
+                nombre: nombre,
+                pronosticoHW: pronosticoHW,
+                estacionalidad: estacionalidad,
+                serieHistorica: serieRecortada
+            });
+        } catch (e) {
+            erroresSKU++;
+            // SKU con error: agregar con pronóstico cero
+            datosHW.push({
+                sku: skuOrig,
+                nombre: nombre,
+                pronosticoHW: Array(52).fill(0),
+                estacionalidad: { hayEstacionalidad: false, periodo: 0, fuerza: 0 },
+                serieHistorica: []
+            });
         }
-
-        datosHW.push({
-            sku: skuOrig,
-            nombre: nombre,
-            pronosticoHW: pronosticoHW,
-            estacionalidad: estacionalidad,
-            serieHistorica: serieRecortada
-        });
     });
+
+    console.log('[HW] Cálculo completado:', totalSKUs, 'SKUs procesados,', erroresSKU, 'con errores,', totalConEstacionalidad, 'con estacionalidad');
 
     window._datosHW = datosHW;
     window._anioHW = anio;
