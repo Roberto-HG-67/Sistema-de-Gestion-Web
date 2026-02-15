@@ -90,8 +90,9 @@ function mostrarTablaSKU(datos) {
     const filas = datos.slice(1);
     
     // Columnas que deben centrarse
-    const colsCentrar = ['proveedor 1', 'proveedor 2', 'um', 'mt^3', 'ficha técnica', 'tipo de venta', 'tipo de compra', 'costo neto', 'margen', 'costo venta'];
+    const colsCentrar = ['proveedor 1', 'proveedor 2', 'um', 'mt^3', 'ficha técnica', 'tipo de venta', 'tipo de compra', 'costo neto', 'margen', 'costo venta', 'categoría', 'categoria', 'subcategoría', 'subcategoria'];
     const colsReducir = ['ficha técnica'];
+    const colsAncho = ['nombre'];
     
     let html = '<table class="excel-table"><thead><tr>';
     
@@ -101,6 +102,7 @@ function mostrarTablaSKU(datos) {
         const clases = [];
         if (colsCentrar.some(c => hLower.includes(c))) clases.push('col-center');
         if (colsReducir.some(c => hLower.includes(c))) clases.push('col-narrow');
+        if (colsAncho.some(c => hLower.includes(c))) clases.push('col-wide-nombre');
         const clsAttr = clases.length ? ` class="${clases.join(' ')}"` : '';
         html += `<th${clsAttr}>
             <div class="header-cell">
@@ -127,6 +129,7 @@ function mostrarTablaSKU(datos) {
             const clases = [];
             if (colsCentrar.some(c => hLower.includes(c))) clases.push('col-center');
             if (colsReducir.some(c => hLower.includes(c))) clases.push('col-narrow');
+            if (colsAncho.some(c => hLower.includes(c))) clases.push('col-wide-nombre');
             const clsAttr = clases.length ? ` class="${clases.join(' ')}"` : '';
             
             // Formatear según columna
@@ -1809,7 +1812,12 @@ function mostrarTablaSinFiltros(datos, containerId) {
         } else if (usarSticky && index === 1) {
             stickyClass = ' sticky-col sticky-col-1';
         }
-        html += `<th data-col="${index}" class="${stickyClass}"><span class="header-text">${header || 'Col ' + (index + 1)}</span></th>`;
+        // Centrar títulos de columnas de años (2024, 2025, 2026, etc.) en Consumo
+        let headerCenterClass = '';
+        if (containerId === 'tableContainer-consumo' && index > 1) {
+            headerCenterClass = ' col-center';
+        }
+        html += `<th data-col="${index}" class="${stickyClass}${headerCenterClass}"><span class="header-text">${header || 'Col ' + (index + 1)}</span></th>`;
     });
     html += '</tr></thead><tbody>';
     filas.forEach(fila => {
@@ -1888,7 +1896,7 @@ function mostrarTablaGenericaConFiltros(datos, containerId) {
     if (containerId === 'tableContainer-proveedores') {
         colsCentrar = ['rut', 'nombre', 'días de pago', 'dias de pago', 'lead time'];
     } else if (containerId === 'tableContainer-stock-actual') {
-        colsCentrar = ['um', 'stock actual'];
+        colsCentrar = ['sku', 'nombre', 'um', 'stock actual'];
     }
     
     let html = '<table class="excel-table"><thead><tr>';
@@ -2232,7 +2240,7 @@ function renderizarTablaCompras() {
     html += `<th><div class="th-con-filtro"><span>SKU</span><input type="text" id="filtroSKUCompras" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroSKU}" oninput="renderizarTablaCompras()"></div></th>`;
     html += `<th><div class="th-con-filtro"><span>Nombre</span><input type="text" id="filtroNombreCompras" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroNombre}" oninput="renderizarTablaCompras()"></div></th>`;
     // Dropdown de Proveedor
-    html += `<th><div class="th-con-filtro"><span>Proveedor</span><select id="filtroProveedorCompras" class="filtro-en-tabla" onchange="renderizarTablaCompras()">`;
+    html += `<th class="col-center col-compras-proveedor"><div class="th-con-filtro"><span>Proveedor</span><select id="filtroProveedorCompras" class="filtro-en-tabla" onchange="renderizarTablaCompras()">`;
     html += `<option value="">Todos</option>`;
     proveedoresUnicos.forEach(p => {
         html += `<option value="${p}"${filtroProveedor === p ? ' selected' : ''}>${p}</option>`;
@@ -2240,14 +2248,12 @@ function renderizarTablaCompras() {
     html += `</select></div></th>`;
     html += '<th>Pronóstico</th>';
     html += '<th>Stock Actual</th>';
-    html += `<th><div class="th-con-filtro"><span>Pedir</span><div class="filtro-pedir-inline">`;
+    html += `<th class="col-center"><div class="th-con-filtro"><span>Pedir</span><div class="filtro-pedir-sort">`;
     html += `<label class="filtro-pedir-check"><input type="checkbox" id="filtroPedirCompras" ${soloPedir ? 'checked' : ''} onchange="renderizarTablaCompras()"> &gt;0</label>`;
-    html += `<select id="ordenPedirCompras" class="filtro-en-tabla filtro-orden-pedir" onchange="renderizarTablaCompras()">`;
-    html += `<option value=""${ordenPedir === '' ? ' selected' : ''}>--</option>`;
-    html += `<option value="asc"${ordenPedir === 'asc' ? ' selected' : ''}>↑</option>`;
-    html += `<option value="desc"${ordenPedir === 'desc' ? ' selected' : ''}>↓</option>`;
-    html += `</select></div></div></th>`;
-    html += '<th>Comentarios</th>';
+    html += `<span class="sort-btn" onclick="document.getElementById('ordenPedirCompras').value = document.getElementById('ordenPedirCompras').value === 'asc' ? 'desc' : 'asc'; renderizarTablaCompras()" title="Ordenar">${ordenPedir === 'asc' ? '&#9650;' : ordenPedir === 'desc' ? '&#9660;' : '&#8693;'}</span>`;
+    html += `<input type="hidden" id="ordenPedirCompras" value="${ordenPedir}">`;
+    html += `</div></div></th>`;
+    html += '<th class="col-center">Comentarios</th>';
     html += '<th>Condiciones</th>';
     html += '</tr></thead><tbody>';
 
@@ -2267,7 +2273,7 @@ function renderizarTablaCompras() {
             html += '<tr>';
             html += `<td class="col-center">${f.sku}</td>`;
             html += `<td>${f.nombre}</td>`;
-            html += `<td>${f.proveedor}</td>`;
+            html += `<td class="col-center col-compras-proveedor">${f.proveedor}</td>`;
             html += `<td class="col-center">${f.pronostico}</td>`;
             html += `<td class="col-center">${f.stockActual}</td>`;
             html += `<td class="col-center"${pedirStyle}>${f.pedir}</td>`;

@@ -2195,6 +2195,27 @@ button:active {
     background: #0ea5e9;
 }
 
+/* Columna NOMBRE más ancha en SKU */
+.col-wide-nombre {
+    min-width: 280px;
+}
+
+/* Columna Proveedor reducida en Compras */
+.col-compras-proveedor {
+    max-width: 120px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Filtro Pedir con sort-btn estilo Análisis de Ventas */
+.filtro-pedir-sort {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+}
+
 /* Controles del gráfico de ventas */
 .chart-controls-ventas {
     display: flex;
