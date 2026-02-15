@@ -46,6 +46,7 @@
             <button class="tab-button" onclick="cambiarVentana('analisis-inventario')">Análisis de Inventario</button>
             <button class="tab-button" onclick="cambiarVentana('pronostico')">Pronóstico</button>
             <button class="tab-button" onclick="cambiarVentana('compras')">Compras</button>
+            <button class="tab-button" onclick="cambiarVentana('compras-ia')">🤖 Compras con IA</button>
             <button class="tab-button" onclick="cambiarVentana('control-entradas')">Control de Entradas</button>
             <button class="tab-button" onclick="cambiarVentana('sku-por-vencer')">SKU por Vencer</button>
             <button class="tab-button" onclick="cambiarVentana('consolidado')">Consolidado</button>
@@ -352,6 +353,39 @@
             <div id="info-semana-compras" class="info-semana" style="margin: 10px 0; font-weight: bold; color: #555;"></div>
             <div id="tableContainer-compras" class="table-container"></div>
             <div id="compras-descarga-wrapper"></div>
+        </div>
+
+        <!-- Ventana Compras con IA (Holt-Winters) -->
+        <div id="compras-ia" class="ventana">
+            <h2>🤖 Compras con IA <span class="ia-badge">Holt-Winters</span></h2>
+            <p class="ia-descripcion">Pronóstico inteligente usando <strong>Suavizado Exponencial Triple (Holt-Winters)</strong> que detecta automáticamente tendencia y estacionalidad. Comparado con el método de promedio móvil simple.</p>
+            <div class="filtros-tabla-consumo">
+                <div class="filtro-grupo">
+                    <label for="filtroAnioComprasIA">Año:</label>
+                    <select id="filtroAnioComprasIA" onchange="actualizarComprasIA()">
+                        <option value="2025">2025</option>
+                        <option value="2026" selected>2026</option>
+                        <option value="2027">2027</option>
+                    </select>
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtroSemanaComprasIA">Semana:</label>
+                    <select id="filtroSemanaComprasIA" onchange="renderizarTablaComprasIA()"></select>
+                </div>
+                <div class="filtro-grupo">
+                    <label for="filtroVistaComprasIA">Vista:</label>
+                    <select id="filtroVistaComprasIA" onchange="renderizarTablaComprasIA()">
+                        <option value="compras" selected>🛒 Tabla de Compras</option>
+                        <option value="comparativa">📊 Comparativa Pronósticos</option>
+                    </select>
+                </div>
+            </div>
+            <div id="loading-compras-ia" class="loading" style="display: none;">⏳ Calculando pronóstico con IA...</div>
+            <div id="error-compras-ia" class="error" style="display: none;"></div>
+            <div id="info-semana-compras-ia" class="info-semana" style="margin: 10px 0; font-weight: bold; color: #555;"></div>
+            <div id="ia-metricas" class="ia-metricas-container" style="display:none;"></div>
+            <div id="tableContainer-compras-ia" class="table-container"></div>
+            <div id="compras-ia-descarga-wrapper"></div>
         </div>
 
         <!-- Ventana Control de Entradas -->

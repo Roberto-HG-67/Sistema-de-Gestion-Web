@@ -36,6 +36,8 @@ function cambiarVentana(ventanaId) {
         cargarDatosPronostico();
     } else if (ventanaId === 'compras') {
         cargarDatosCompras();
+    } else if (ventanaId === 'compras-ia') {
+        cargarDatosComprasIA();
     } else if (ventanaId === 'historial-precios') {
         cargarHistorialPrecios();
     } else if (ventanaId === 'control-entradas') {
@@ -2343,6 +2345,727 @@ function descargarComprasTXT() {
     const a = document.createElement('a');
     a.href = url;
     a.download = `Compras_${anio}_S${semana}.txt`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ===== VENTANA COMPRAS CON IA (Holt-Winters) =====
+
+// --- Algoritmo Holt-Winters (Suavizado Exponencial Triple) ---
+function holtWinters(series, seasonLength, forecastPeriods, alpha, beta, gamma) {
+    // Filtrar la serie: necesitamos al menos 2 temporadas completas
+    if (!series || series.length < seasonLength * 2) {
+        // Fallback: devolver promedio simple si no hay datos suficientes
+        const avg = series && series.length > 0 ? series.reduce((a, b) => a + b, 0) / series.length : 0;
+        return Array(forecastPeriods).fill(Math.round(avg));
+    }
+
+    const n = series.length;
+
+    // Auto-optimización de parámetros si no se proporcionan
+    if (alpha === undefined) alpha = 0.3;
+    if (beta === undefined) beta = 0.1;
+    if (gamma === undefined) gamma = 0.3;
+
+    // Inicialización del nivel (L) y tendencia (T)
+    // Nivel inicial: promedio de la primera temporada
+    let L = 0;
+    for (let i = 0; i < seasonLength; i++) L += series[i];
+    L /= seasonLength;
+
+    // Tendencia inicial: diferencia entre promedios de las dos primeras temporadas
+    let T = 0;
+    for (let i = 0; i < seasonLength; i++) {
+        T += (series[seasonLength + i] - series[i]);
+    }
+    T /= (seasonLength * seasonLength);
+
+    // Índices estacionales iniciales (método aditivo)
+    const S = [];
+    for (let i = 0; i < seasonLength; i++) {
+        S.push(series[i] - L);
+    }
+
+    // Arrays para almacenar los valores calculados
+    const levels = [L];
+    const trends = [T];
+    const seasonals = [...S];
+
+    // Aplicar Holt-Winters sobre los datos históricos
+    for (let t = 0; t < n; t++) {
+        const y = series[t];
+        const sIdx = t % seasonLength;
+        const prevL = levels[levels.length - 1];
+        const prevT = trends[trends.length - 1];
+        const prevS = seasonals[sIdx];
+
+        // Actualizar nivel
+        const newL = alpha * (y - prevS) + (1 - alpha) * (prevL + prevT);
+        // Actualizar tendencia
+        const newT = beta * (newL - prevL) + (1 - beta) * prevT;
+        // Actualizar estacionalidad
+        const newS = gamma * (y - newL) + (1 - gamma) * prevS;
+
+        levels.push(newL);
+        trends.push(newT);
+        seasonals[sIdx] = newS;
+    }
+
+    // Generar pronósticos
+    const forecasts = [];
+    const lastL = levels[levels.length - 1];
+    const lastT = trends[trends.length - 1];
+    for (let h = 1; h <= forecastPeriods; h++) {
+        const sIdx = (n + h - 1) % seasonLength;
+        const forecast = lastL + h * lastT + seasonals[sIdx];
+        forecasts.push(Math.max(0, Math.round(forecast)));
+    }
+
+    return forecasts;
+}
+
+// Auto-optimizar parámetros Holt-Winters minimizando MAE
+function optimizarHoltWinters(series, seasonLength) {
+    if (!series || series.length < seasonLength * 2) {
+        return { alpha: 0.3, beta: 0.1, gamma: 0.3 };
+    }
+
+    let mejorAlpha = 0.3, mejorBeta = 0.1, mejorGamma = 0.3;
+    let mejorError = Infinity;
+
+    // Grid search con pasos de 0.1
+    for (let a = 0.1; a <= 0.9; a += 0.2) {
+        for (let b = 0.01; b <= 0.5; b += 0.1) {
+            for (let g = 0.1; g <= 0.9; g += 0.2) {
+                // Usar la primera mitad para entrenar, la segunda para validar
+                const trainLen = Math.floor(series.length * 0.7);
+                const train = series.slice(0, trainLen);
+                const test = series.slice(trainLen);
+
+                if (train.length < seasonLength * 2) continue;
+
+                const preds = holtWinters(train, seasonLength, test.length, a, b, g);
+                
+                // Calcular MAE
+                let mae = 0;
+                for (let i = 0; i < test.length; i++) {
+                    mae += Math.abs(test[i] - preds[i]);
+                }
+                mae /= test.length;
+
+                if (mae < mejorError) {
+                    mejorError = mae;
+                    mejorAlpha = a;
+                    mejorBeta = b;
+                    mejorGamma = g;
+                }
+            }
+        }
+    }
+
+    return { alpha: mejorAlpha, beta: mejorBeta, gamma: mejorGamma };
+}
+
+// Detectar estacionalidad mediante autocorrelación
+function detectarEstacionalidad(series, maxLag) {
+    if (!series || series.length < maxLag * 2) return { hayEstacionalidad: false, periodo: 0, fuerza: 0 };
+
+    const n = series.length;
+    const mean = series.reduce((a, b) => a + b, 0) / n;
+    
+    // Varianza
+    let varianza = 0;
+    for (let i = 0; i < n; i++) varianza += Math.pow(series[i] - mean, 2);
+    varianza /= n;
+    if (varianza === 0) return { hayEstacionalidad: false, periodo: 0, fuerza: 0 };
+
+    let mejorLag = 0;
+    let mejorCorr = 0;
+
+    for (let lag = 2; lag <= maxLag; lag++) {
+        let autocorr = 0;
+        for (let i = 0; i < n - lag; i++) {
+            autocorr += (series[i] - mean) * (series[i + lag] - mean);
+        }
+        autocorr /= (n * varianza);
+
+        if (autocorr > mejorCorr) {
+            mejorCorr = autocorr;
+            mejorLag = lag;
+        }
+    }
+
+    return {
+        hayEstacionalidad: mejorCorr > 0.25,
+        periodo: mejorLag,
+        fuerza: mejorCorr
+    };
+}
+
+async function cargarDatosComprasIA() {
+    const loading = document.getElementById('loading-compras-ia');
+    const error = document.getElementById('error-compras-ia');
+
+    loading.style.display = 'block';
+    error.style.display = 'none';
+
+    try {
+        if (datosSKU.length === 0) await cargarDatosSKU();
+        if (datosProveedores.length === 0) await cargarDatosProveedores();
+        if (datosStockActual.length === 0) {
+            const responseStock = await fetch('Excel/Stock Actual.xlsx');
+            if (!responseStock.ok) throw new Error('No se pudo cargar Excel/Stock Actual.xlsx');
+            const arrayBufferStock = await responseStock.arrayBuffer();
+            const workbookStock = XLSX.read(arrayBufferStock, { type: 'array' });
+            datosStockActual = XLSX.utils.sheet_to_json(workbookStock.Sheets[workbookStock.SheetNames[0]], { header: 1 });
+        }
+        if (datosBBDD.length === 0) {
+            const response = await fetch('Excel/BBDD.xlsx');
+            if (!response.ok) throw new Error('No se pudo cargar BBDD.xlsx');
+            const arrayBuffer = await response.arrayBuffer();
+            const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+            datosBBDD = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+        }
+
+        // Calcular pronóstico original si no existe
+        if (!window._datosPronosticoSemanal) {
+            actualizarPronostico();
+        }
+
+        actualizarComprasIA();
+        loading.style.display = 'none';
+    } catch (err) {
+        loading.style.display = 'none';
+        error.style.display = 'block';
+        error.textContent = '❌ Error al cargar Compras con IA: ' + err.message;
+    }
+}
+
+function actualizarComprasIA() {
+    const anio = parseInt(document.getElementById('filtroAnioComprasIA').value);
+    const error = document.getElementById('error-compras-ia');
+    error.style.display = 'none';
+
+    // Reinicializar selector de semanas
+    const selectSemana = document.getElementById('filtroSemanaComprasIA');
+    selectSemana.innerHTML = '';
+
+    function lunesSemanaISO1(year) {
+        const ene4 = new Date(Date.UTC(year, 0, 4));
+        const diaSemana = ene4.getUTCDay() || 7;
+        return new Date(Date.UTC(year, 0, 4 - (diaSemana - 1)));
+    }
+
+    const lunes1 = lunesSemanaISO1(anio);
+    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+    for (let i = 0; i < 52; i++) {
+        const inicio = new Date(lunes1.getTime() + i * 7 * 86400000);
+        const fin = new Date(inicio.getTime() + 6 * 86400000);
+        const label = `S${i + 1} (${inicio.getUTCDate()} ${meses[inicio.getUTCMonth()]} - ${fin.getUTCDate()} ${meses[fin.getUTCMonth()]})`;
+        const option = document.createElement('option');
+        option.value = i + 1;
+        option.textContent = label;
+        selectSemana.appendChild(option);
+    }
+
+    // Seleccionar semana actual
+    const hoy = new Date();
+    let semanaActual = 1;
+    for (let i = 0; i < 52; i++) {
+        const inicio = new Date(lunes1.getTime() + i * 7 * 86400000);
+        const fin = new Date(inicio.getTime() + 7 * 86400000 - 1);
+        if (hoy.getTime() >= inicio.getTime() && hoy.getTime() <= fin.getTime()) {
+            semanaActual = i + 1;
+            break;
+        }
+    }
+    selectSemana.value = semanaActual;
+
+    // Recalcular pronóstico original si el año cambió
+    if (window._anioPronostico !== anio) {
+        document.getElementById('filtroAnioPronostico').value = anio;
+        actualizarPronostico();
+    }
+
+    // Calcular Holt-Winters para todos los SKUs
+    calcularPronosticoHW(anio);
+
+    renderizarTablaComprasIA();
+}
+
+function calcularPronosticoHW(anio) {
+    const headersBBDD = datosBBDD[0];
+    const headersSKU = datosSKU[0];
+
+    const indexSKU_SKU = headersSKU.findIndex(h => h && h.toLowerCase() === 'sku');
+    const indexNombre_SKU = headersSKU.findIndex(h => h && h.toLowerCase().includes('nombre'));
+
+    let indexIDProducto_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'idproducto');
+    if (indexIDProducto_BBDD < 0) {
+        indexIDProducto_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'id entero');
+    }
+    const indexCantidad_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('cantidad'));
+    let indexFechaEntero_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase() === 'fecha entero');
+    if (indexFechaEntero_BBDD < 0) {
+        indexFechaEntero_BBDD = headersBBDD.findIndex(h => h && h.toLowerCase().includes('fecha'));
+    }
+
+    const EXCEL_EPOCH = new Date('1899-12-30').getTime();
+    function excelSerialToDate(serial) {
+        const num = Number(serial);
+        if (isNaN(num) || num <= 0) return null;
+        return new Date(EXCEL_EPOCH + num * 86400000);
+    }
+
+    function lunesSemanaISO1(year) {
+        const ene4 = new Date(Date.UTC(year, 0, 4));
+        const diaSemana = ene4.getUTCDay() || 7;
+        return new Date(Date.UTC(year, 0, 4 - (diaSemana - 1)));
+    }
+
+    function generarRangosSemanas(year) {
+        const lunes1 = lunesSemanaISO1(year);
+        const rangos = [];
+        for (let i = 0; i < 52; i++) {
+            const inicio = new Date(lunes1.getTime() + i * 7 * 86400000);
+            const fin = new Date(inicio.getTime() + 6 * 86400000);
+            rangos.push({ inicio: inicio.getTime(), fin: fin.getTime() + 86400000 - 1 });
+        }
+        return rangos;
+    }
+
+    // Rangos semanales para 3 años de historia (156 semanas) + año actual
+    const rangosSemanales = [];
+    for (let a = anio - 3; a <= anio - 1; a++) {
+        rangosSemanales.push(...generarRangosSemanas(a));
+    }
+    const totalHistorico = rangosSemanales.length;
+
+    // Rangos del año actual para las 52 semanas a pronosticar
+    const rangosAnioActual = generarRangosSemanas(anio);
+
+    // Pre-convertir fechas de BBDD
+    const bbddConFechas = [];
+    for (let i = 1; i < datosBBDD.length; i++) {
+        const filaBBDD = datosBBDD[i];
+        const fechaEnteroVal = filaBBDD[indexFechaEntero_BBDD];
+        if (!fechaEnteroVal) continue;
+        const fechaObj = excelSerialToDate(fechaEnteroVal);
+        if (!fechaObj) continue;
+        bbddConFechas.push({
+            idProd: String(filaBBDD[indexIDProducto_BBDD]).trim(),
+            cantidad: Number(filaBBDD[indexCantidad_BBDD]) || 0,
+            timestamp: fechaObj.getTime()
+        });
+    }
+
+    const datosHW = [];
+    const filasSKU = datosSKU.slice(1);
+    let totalConEstacionalidad = 0;
+    let totalSKUs = 0;
+
+    filasSKU.forEach(filaSKU => {
+        const skuOrig = filaSKU[indexSKU_SKU];
+        if (skuOrig === undefined || skuOrig === null) return;
+        const skuStr = String(skuOrig).trim();
+        const skuInt = String(Math.floor(Number(skuOrig)));
+        const nombre = filaSKU[indexNombre_SKU] || '';
+        totalSKUs++;
+
+        // Construir serie histórica semanal
+        const serieHistorica = new Array(totalHistorico).fill(0);
+        bbddConFechas.forEach(reg => {
+            if (reg.idProd !== skuStr && reg.idProd !== skuInt) return;
+            for (let p = 0; p < totalHistorico; p++) {
+                if (reg.timestamp >= rangosSemanales[p].inicio && reg.timestamp <= rangosSemanales[p].fin) {
+                    serieHistorica[p] += reg.cantidad;
+                    break;
+                }
+            }
+        });
+
+        // Detectar estacionalidad
+        const estacionalidad = detectarEstacionalidad(serieHistorica, 52);
+        if (estacionalidad.hayEstacionalidad) totalConEstacionalidad++;
+
+        // Determinar longitud de temporada
+        const seasonLen = estacionalidad.hayEstacionalidad ? estacionalidad.periodo : 52;
+
+        // Filtrar serie para eliminar ceros iniciales consecutivos
+        let startIdx = 0;
+        while (startIdx < serieHistorica.length && serieHistorica[startIdx] === 0) startIdx++;
+        const serieRecortada = serieHistorica.slice(startIdx);
+
+        // Pronóstico Holt-Winters para 52 semanas
+        let pronosticoHW;
+        if (serieRecortada.length >= seasonLen * 2) {
+            const params = optimizarHoltWinters(serieRecortada, seasonLen);
+            pronosticoHW = holtWinters(serieRecortada, seasonLen, 52, params.alpha, params.beta, params.gamma);
+        } else if (serieRecortada.length >= 4) {
+            // Serie corta: usar suavizado exponencial simple
+            const alpha = 0.3;
+            let level = serieRecortada[0];
+            for (let i = 1; i < serieRecortada.length; i++) {
+                level = alpha * serieRecortada[i] + (1 - alpha) * level;
+            }
+            pronosticoHW = Array(52).fill(Math.max(0, Math.round(level)));
+        } else {
+            const avg = serieRecortada.length > 0 ? serieRecortada.reduce((a, b) => a + b, 0) / serieRecortada.length : 0;
+            pronosticoHW = Array(52).fill(Math.max(0, Math.round(avg)));
+        }
+
+        datosHW.push({
+            sku: skuOrig,
+            nombre: nombre,
+            pronosticoHW: pronosticoHW,
+            estacionalidad: estacionalidad,
+            serieHistorica: serieRecortada
+        });
+    });
+
+    window._datosHW = datosHW;
+    window._anioHW = anio;
+    window._hwMetricas = {
+        totalSKUs: totalSKUs,
+        conEstacionalidad: totalConEstacionalidad,
+        sinEstacionalidad: totalSKUs - totalConEstacionalidad
+    };
+}
+
+function renderizarTablaComprasIA() {
+    const container = document.getElementById('tableContainer-compras-ia');
+    const infoSemana = document.getElementById('info-semana-compras-ia');
+    const metricasDiv = document.getElementById('ia-metricas');
+    const anio = parseInt(document.getElementById('filtroAnioComprasIA').value);
+    const semana = parseInt(document.getElementById('filtroSemanaComprasIA').value) || 1;
+    const vista = document.getElementById('filtroVistaComprasIA').value;
+
+    if (!window._datosHW || !window._datosPronosticoSemanal || datosSKU.length === 0) {
+        container.innerHTML = '<p class="placeholder">No hay datos disponibles.</p>';
+        return;
+    }
+
+    // Info de semana
+    function lunesSemanaISO1(year) {
+        const ene4 = new Date(Date.UTC(year, 0, 4));
+        const diaSemana = ene4.getUTCDay() || 7;
+        return new Date(Date.UTC(year, 0, 4 - (diaSemana - 1)));
+    }
+    const lunes1 = lunesSemanaISO1(anio);
+    const inicioSem = new Date(lunes1.getTime() + (semana - 1) * 7 * 86400000);
+    const finSem = new Date(inicioSem.getTime() + 6 * 86400000);
+    const meses = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+    infoSemana.textContent = `Semana ${semana}: ${inicioSem.getUTCDate()} ${meses[inicioSem.getUTCMonth()]} ${inicioSem.getUTCFullYear()} → ${finSem.getUTCDate()} ${meses[finSem.getUTCMonth()]} ${finSem.getUTCFullYear()}`;
+
+    // Mostrar métricas
+    const m = window._hwMetricas;
+    metricasDiv.style.display = 'flex';
+    metricasDiv.innerHTML = `
+        <div class="ia-metrica">
+            <span class="ia-metrica-valor">${m.totalSKUs}</span>
+            <span class="ia-metrica-label">SKUs Analizados</span>
+        </div>
+        <div class="ia-metrica ia-metrica-ok">
+            <span class="ia-metrica-valor">${m.conEstacionalidad}</span>
+            <span class="ia-metrica-label">Con Estacionalidad</span>
+        </div>
+        <div class="ia-metrica ia-metrica-info">
+            <span class="ia-metrica-valor">${m.sinEstacionalidad}</span>
+            <span class="ia-metrica-label">Sin Estacionalidad</span>
+        </div>
+    `;
+
+    // Índices SKU
+    const headersSKU = datosSKU[0];
+    const idxSKU = headersSKU.findIndex(h => h && h.toLowerCase() === 'sku');
+    const idxNombre = headersSKU.findIndex(h => h && h.toLowerCase().includes('nombre'));
+    const idxProveedor1 = headersSKU.findIndex(h => h && h.toLowerCase().includes('proveedor 1'));
+    const idxUM = headersSKU.findIndex(h => h && h.toLowerCase() === 'um');
+    const idxTipoVenta = headersSKU.findIndex(h => h && h.toLowerCase().includes('tipo de venta'));
+    const idxTipoCompra = headersSKU.findIndex(h => h && h.toLowerCase().includes('tipo de compra'));
+
+    // Índices Stock
+    const headersStock = datosStockActual[0];
+    const idxCodigoStock = headersStock.findIndex(h => h && (h.toLowerCase().includes('código') || h.toLowerCase().includes('codigo')));
+    const idxCdNunoa = headersStock.findIndex(h => h && h.toLowerCase().includes('ñuñoa'));
+
+    // Mapa pronóstico original (promedio móvil)
+    const mapaPronOrig = {};
+    window._datosPronosticoSemanal.forEach(d => {
+        const skuKey = String(d.sku).trim();
+        mapaPronOrig[skuKey] = d.pronostico[semana - 1] || 0;
+    });
+
+    // Mapa pronóstico HW
+    const mapaPronHW = {};
+    window._datosHW.forEach(d => {
+        const skuKey = String(d.sku).trim();
+        mapaPronHW[skuKey] = {
+            pronostico: d.pronosticoHW[semana - 1] || 0,
+            estacionalidad: d.estacionalidad
+        };
+    });
+
+    // Filtros inline
+    const filtroSKU = (document.getElementById('filtroSKUComprasIA')?.value || '').toLowerCase();
+    const filtroNombre = (document.getElementById('filtroNombreComprasIA')?.value || '').toLowerCase();
+    const filtroProveedor = (document.getElementById('filtroProveedorComprasIA')?.value || '');
+    const soloPedir = document.getElementById('filtroPedirComprasIA')?.checked || false;
+    const ordenPedir = document.getElementById('ordenPedirComprasIA')?.value || '';
+
+    // Construir filas
+    const filas = [];
+    for (let i = 1; i < datosSKU.length; i++) {
+        const fila = datosSKU[i];
+        const sku = fila[idxSKU];
+        if (sku === undefined || sku === null) continue;
+
+        const skuStr = String(sku).trim();
+        const skuInt = String(Math.floor(Number(sku)));
+        const nombre = fila[idxNombre] || '';
+        const proveedor = idxProveedor1 >= 0 ? (fila[idxProveedor1] || '') : '';
+        const um = idxUM >= 0 ? (fila[idxUM] || '') : '';
+        const tipoVenta = idxTipoVenta >= 0 ? (fila[idxTipoVenta] || '') : '';
+        const tipoCompra = idxTipoCompra >= 0 ? (fila[idxTipoCompra] || '') : '';
+
+        if (filtroSKU && !skuStr.toLowerCase().includes(filtroSKU)) continue;
+        if (filtroNombre && !String(nombre).toLowerCase().includes(filtroNombre)) continue;
+        if (filtroProveedor && String(proveedor).trim() !== filtroProveedor) continue;
+
+        const pronOriginal = mapaPronOrig[skuStr] || mapaPronOrig[skuInt] || 0;
+        const hwData = mapaPronHW[skuStr] || mapaPronHW[skuInt] || { pronostico: 0, estacionalidad: { hayEstacionalidad: false, fuerza: 0 } };
+        const pronHW = hwData.pronostico;
+
+        // Stock actual
+        let stockActual = 0;
+        for (let j = 1; j < datosStockActual.length; j++) {
+            const filaStock = datosStockActual[j];
+            if (filaStock[idxCodigoStock] && filaStock[idxCodigoStock].toString() === sku.toString()) {
+                stockActual = Number(filaStock[idxCdNunoa]) || 0;
+                break;
+            }
+        }
+
+        const pedirOriginal = Math.max(0, Math.round(pronOriginal - stockActual));
+        const pedirHW = Math.max(0, Math.round(pronHW - stockActual));
+        const diferencia = pronHW - pronOriginal;
+
+        filas.push({
+            sku, nombre, proveedor, um, tipoVenta, tipoCompra,
+            pronOriginal, pronHW, pedirOriginal, pedirHW,
+            stockActual, diferencia,
+            estacionalidad: hwData.estacionalidad
+        });
+    }
+
+    let filasVisibles = soloPedir ? filas.filter(f => f.pedirHW > 0) : filas;
+    if (ordenPedir === 'asc') filasVisibles = [...filasVisibles].sort((a, b) => a.pedirHW - b.pedirHW);
+    else if (ordenPedir === 'desc') filasVisibles = [...filasVisibles].sort((a, b) => b.pedirHW - a.pedirHW);
+
+    const proveedoresUnicos = [...new Set(filas.map(f => String(f.proveedor).trim()).filter(p => p !== ''))];
+    proveedoresUnicos.sort((a, b) => a.localeCompare(b, 'es'));
+
+    window._filasComprasIAVisibles = filasVisibles;
+
+    if (vista === 'comparativa') {
+        renderizarVistaComparativa(filasVisibles, proveedoresUnicos, filtroSKU, filtroNombre, filtroProveedor, container);
+    } else {
+        renderizarVistaComprasIA(filasVisibles, proveedoresUnicos, filtroSKU, filtroNombre, filtroProveedor, soloPedir, ordenPedir, container);
+    }
+
+    // Botón descarga
+    const descargaWrapper = document.getElementById('compras-ia-descarga-wrapper');
+    if (descargaWrapper) {
+        descargaWrapper.innerHTML = `
+            <div class="compras-descarga-container">
+                <button class="btn-descargar-txt" onclick="descargarComprasIATXT()" title="Descargar productos visibles como archivo de texto">
+                    📥 Descargar lista IA (.txt)
+                </button>
+                <span class="compras-descarga-info">${filasVisibles.length} producto${filasVisibles.length !== 1 ? 's' : ''} visible${filasVisibles.length !== 1 ? 's' : ''}</span>
+            </div>
+        `;
+    }
+
+    // Restaurar foco
+    const activeId = document.activeElement?.id || '';
+    if (activeId.includes('ComprasIA')) {
+        const el = document.getElementById(activeId);
+        if (el) { el.focus(); el.setSelectionRange(el.value.length, el.value.length); }
+    }
+}
+
+function renderizarVistaComprasIA(filas, proveedoresUnicos, filtroSKU, filtroNombre, filtroProveedor, soloPedir, ordenPedir, container) {
+    const maxPedir = filas.reduce((max, f) => Math.max(max, f.pedirHW), 0);
+
+    let html = '<table class="excel-table tabla-compras tabla-compras-ia">';
+    html += '<thead><tr>';
+    html += `<th><div class="th-con-filtro"><span>SKU</span><input type="text" id="filtroSKUComprasIA" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroSKU}" oninput="renderizarTablaComprasIA()"></div></th>`;
+    html += `<th><div class="th-con-filtro"><span>Nombre</span><input type="text" id="filtroNombreComprasIA" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroNombre}" oninput="renderizarTablaComprasIA()"></div></th>`;
+    html += `<th><div class="th-con-filtro"><span>Proveedor</span><select id="filtroProveedorComprasIA" class="filtro-en-tabla" onchange="renderizarTablaComprasIA()">`;
+    html += `<option value="">Todos</option>`;
+    proveedoresUnicos.forEach(p => { html += `<option value="${p}"${filtroProveedor === p ? ' selected' : ''}>${p}</option>`; });
+    html += `</select></div></th>`;
+    html += '<th class="col-ia-header">🤖 Pronóstico IA</th>';
+    html += '<th>Pronóstico Original</th>';
+    html += '<th>Stock Actual</th>';
+    html += `<th><div class="th-con-filtro"><span>🤖 Pedir IA</span><div class="filtro-pedir-inline">`;
+    html += `<label class="filtro-pedir-check"><input type="checkbox" id="filtroPedirComprasIA" ${soloPedir ? 'checked' : ''} onchange="renderizarTablaComprasIA()"> &gt;0</label>`;
+    html += `<select id="ordenPedirComprasIA" class="filtro-en-tabla filtro-orden-pedir" onchange="renderizarTablaComprasIA()">`;
+    html += `<option value=""${ordenPedir === '' ? ' selected' : ''}>--</option>`;
+    html += `<option value="asc"${ordenPedir === 'asc' ? ' selected' : ''}>↑</option>`;
+    html += `<option value="desc"${ordenPedir === 'desc' ? ' selected' : ''}>↓</option>`;
+    html += `</select></div></div></th>`;
+    html += '<th>Pedir Original</th>';
+    html += '<th>Estacionalidad</th>';
+    html += '</tr></thead><tbody>';
+
+    if (filas.length === 0) {
+        html += '<tr><td colspan="9" style="text-align:center; padding:20px;">No hay datos para esta semana</td></tr>';
+    } else {
+        filas.forEach(f => {
+            // Color degradado para pedir IA
+            let pedirStyle = '';
+            if (f.pedirHW > 0 && maxPedir > 0) {
+                const intensidad = f.pedirHW / maxPedir;
+                const r = 255;
+                const g = Math.round(235 - intensidad * 135);
+                const b = Math.round(180 - intensidad * 140);
+                pedirStyle = ` style="background-color: rgb(${r},${g},${b}); font-weight: bold; color: ${intensidad > 0.6 ? '#fff' : '#333'}"`;
+            }
+
+            // Badge de estacionalidad
+            let estBadge = '';
+            if (f.estacionalidad.hayEstacionalidad) {
+                const fuerza = (f.estacionalidad.fuerza * 100).toFixed(0);
+                estBadge = `<span class="ia-est-badge ia-est-si">✓ ${fuerza}%</span>`;
+            } else {
+                estBadge = `<span class="ia-est-badge ia-est-no">—</span>`;
+            }
+
+            // Color de diferencia en pronóstico
+            let pronHWClass = '';
+            if (f.pronHW > f.pronOriginal) pronHWClass = ' ia-pron-mayor';
+            else if (f.pronHW < f.pronOriginal) pronHWClass = ' ia-pron-menor';
+
+            html += '<tr>';
+            html += `<td class="col-center">${f.sku}</td>`;
+            html += `<td>${f.nombre}</td>`;
+            html += `<td>${f.proveedor}</td>`;
+            html += `<td class="col-center col-ia-valor${pronHWClass}">${formatearMiles(f.pronHW)}</td>`;
+            html += `<td class="col-center col-orig-valor">${formatearMiles(f.pronOriginal)}</td>`;
+            html += `<td class="col-center">${formatearMiles(f.stockActual)}</td>`;
+            html += `<td class="col-center"${pedirStyle}>${formatearMiles(f.pedirHW)}</td>`;
+            html += `<td class="col-center col-orig-valor">${formatearMiles(f.pedirOriginal)}</td>`;
+            html += `<td class="col-center">${estBadge}</td>`;
+            html += '</tr>';
+        });
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function renderizarVistaComparativa(filas, proveedoresUnicos, filtroSKU, filtroNombre, filtroProveedor, container) {
+    // Vista comparativa detallada
+    let html = '<table class="excel-table tabla-compras tabla-comparativa-ia">';
+    html += '<thead><tr>';
+    html += `<th><div class="th-con-filtro"><span>SKU</span><input type="text" id="filtroSKUComprasIA" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroSKU}" oninput="renderizarTablaComprasIA()"></div></th>`;
+    html += `<th><div class="th-con-filtro"><span>Nombre</span><input type="text" id="filtroNombreComprasIA" class="filtro-en-tabla" placeholder="Filtrar..." value="${filtroNombre}" oninput="renderizarTablaComprasIA()"></div></th>`;
+    html += `<th><div class="th-con-filtro"><span>Proveedor</span><select id="filtroProveedorComprasIA" class="filtro-en-tabla" onchange="renderizarTablaComprasIA()">`;
+    html += `<option value="">Todos</option>`;
+    proveedoresUnicos.forEach(p => { html += `<option value="${p}"${filtroProveedor === p ? ' selected' : ''}>${p}</option>`; });
+    html += `</select></div></th>`;
+    html += '<th class="col-ia-header">🤖 Pronóstico IA</th>';
+    html += '<th>Pronóstico Original</th>';
+    html += '<th>Diferencia</th>';
+    html += '<th>% Cambio</th>';
+    html += '<th>Estacionalidad</th>';
+    html += '<th>Fuerza</th>';
+    html += '</tr></thead><tbody>';
+
+    const filasConDif = filas.filter(f => f.pronOriginal > 0 || f.pronHW > 0);
+
+    if (filasConDif.length === 0) {
+        html += '<tr><td colspan="9" style="text-align:center; padding:20px;">No hay datos</td></tr>';
+    } else {
+        filasConDif.forEach(f => {
+            const dif = f.diferencia;
+            const pctCambio = f.pronOriginal > 0 ? ((dif / f.pronOriginal) * 100).toFixed(1) : (f.pronHW > 0 ? '∞' : '0.0');
+
+            let difClass = '';
+            let difIcon = '';
+            if (dif > 0) { difClass = 'ia-dif-positiva'; difIcon = '▲'; }
+            else if (dif < 0) { difClass = 'ia-dif-negativa'; difIcon = '▼'; }
+            else { difClass = 'ia-dif-neutro'; difIcon = '='; }
+
+            let estBadge = '';
+            let fuerzaStr = '';
+            if (f.estacionalidad.hayEstacionalidad) {
+                estBadge = `<span class="ia-est-badge ia-est-si">Sí</span>`;
+                fuerzaStr = `<span class="ia-fuerza">${(f.estacionalidad.fuerza * 100).toFixed(0)}%</span>`;
+            } else {
+                estBadge = `<span class="ia-est-badge ia-est-no">No</span>`;
+                fuerzaStr = `<span class="ia-fuerza-baja">${(f.estacionalidad.fuerza * 100).toFixed(0)}%</span>`;
+            }
+
+            html += '<tr>';
+            html += `<td class="col-center">${f.sku}</td>`;
+            html += `<td>${f.nombre}</td>`;
+            html += `<td>${f.proveedor}</td>`;
+            html += `<td class="col-center col-ia-valor">${formatearMiles(f.pronHW)}</td>`;
+            html += `<td class="col-center col-orig-valor">${formatearMiles(f.pronOriginal)}</td>`;
+            html += `<td class="col-center ${difClass}">${difIcon} ${formatearMiles(Math.abs(dif))}</td>`;
+            html += `<td class="col-center ${difClass}">${pctCambio}%</td>`;
+            html += `<td class="col-center">${estBadge}</td>`;
+            html += `<td class="col-center">${fuerzaStr}</td>`;
+            html += '</tr>';
+        });
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
+function descargarComprasIATXT() {
+    const filas = window._filasComprasIAVisibles;
+    if (!filas || filas.length === 0) {
+        alert('No hay productos visibles para descargar.');
+        return;
+    }
+
+    const anio = document.getElementById('filtroAnioComprasIA').value;
+    const semana = document.getElementById('filtroSemanaComprasIA').value;
+    const semanaTexto = document.getElementById('filtroSemanaComprasIA').selectedOptions[0]?.textContent || `S${semana}`;
+
+    let contenido = `LISTA DE COMPRAS CON IA (Holt-Winters) - Año ${anio} - ${semanaTexto}\n`;
+    contenido += `Generado: ${new Date().toLocaleString('es-CL')}\n`;
+    contenido += `Total productos: ${filas.length}\n`;
+    contenido += `Método: Suavizado Exponencial Triple (Holt-Winters)\n`;
+    contenido += '='.repeat(80) + '\n';
+
+    const grupos = {};
+    filas.forEach(f => {
+        const prov = String(f.proveedor).trim() || 'SIN PROVEEDOR';
+        if (!grupos[prov]) grupos[prov] = [];
+        grupos[prov].push(f);
+    });
+
+    Object.keys(grupos).sort((a, b) => a.localeCompare(b, 'es')).forEach(prov => {
+        contenido += `\n▸ ${prov}\n`;
+        grupos[prov].forEach(f => {
+            const estTag = f.estacionalidad.hayEstacionalidad ? ' [EST]' : '';
+            contenido += `${f.sku}\t${f.nombre} - ${f.pedirHW} ${f.um}${estTag} (Original: ${f.pedirOriginal})\n`;
+        });
+    });
+
+    const blob = new Blob([contenido], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Compras_IA_${anio}_S${semana}.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
